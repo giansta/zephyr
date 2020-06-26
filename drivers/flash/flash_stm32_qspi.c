@@ -30,10 +30,10 @@ typedef void (*irq_config_func_t)(struct device *dev);
 /* Data from DT child node containing flash parameters */
 struct spi_nor_flash_config {
 	/* JEDEC Id */
-	u8_t jedec_id[SPI_NOR_MAX_ID_LEN];
+	uint8_t jedec_id[SPI_NOR_MAX_ID_LEN];
 
 	/* Max SPI frequency supported by the flash module */
-	u32_t spi_max_frequency;
+	uint32_t spi_max_frequency;
 };
 
 struct flash_stm32_qspi_config {
@@ -44,10 +44,10 @@ struct flash_stm32_qspi_config {
 };
 
 struct flash_params {
-	u32_t size;                     /* Flash size in bytes */
+	uint32_t size;                  /* Flash size in bytes */
 	struct sector_layout {
-		u8_t size_n;
-		u8_t erase_cmd;
+		uint8_t size_n;
+		uint8_t erase_cmd;
 	} sector_layout[4];
 };
 
@@ -114,7 +114,7 @@ static int qspi_send_cmd(struct device *dev, QSPI_CommandTypeDef *cmd)
  * Perform a read access over QSPI bus.
  */
 static int qspi_read_access(struct device *dev, QSPI_CommandTypeDef *cmd,
-			    u8_t *data, size_t size)
+			    uint8_t *data, size_t size)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
@@ -150,7 +150,7 @@ static int qspi_read_access(struct device *dev, QSPI_CommandTypeDef *cmd,
  * Perform a write access over QSPI bus.
  */
 static int qspi_write_access(struct device *dev, QSPI_CommandTypeDef *cmd,
-			     const u8_t *data, size_t size)
+			     const uint8_t *data, size_t size)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
@@ -189,7 +189,7 @@ static int qspi_read_id(struct device *dev)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
 	const struct spi_nor_flash_config *flash_cfg = &dev_cfg->flash_config;
-	u8_t rx_buf[SPI_NOR_MAX_ID_LEN];
+	uint8_t rx_buf[SPI_NOR_MAX_ID_LEN];
 
 	QSPI_CommandTypeDef cmd = {
 		.Instruction = SPI_NOR_CMD_RDID,
@@ -213,7 +213,7 @@ static int qspi_read_id(struct device *dev)
 /*
  * Read Serial Flash Discovery Parameter
  */
-static int qspi_read_sfdp(struct device *dev, off_t addr, u8_t *data,
+static int qspi_read_sfdp(struct device *dev, off_t addr, uint8_t *data,
 			  size_t size)
 {
 	QSPI_CommandTypeDef cmd = {
@@ -236,7 +236,7 @@ static int qspi_process_jedec_flash_parameter_table(struct device *dev,
 	union sfdp_dword data[word_len];
 	int ret;
 
-	ret = qspi_read_sfdp(dev, addr, (u8_t *)data, sizeof(data));
+	ret = qspi_read_sfdp(dev, addr, (uint8_t *)data, sizeof(data));
 	if (ret != 0) {
 		return ret;
 	}
@@ -245,11 +245,11 @@ static int qspi_process_jedec_flash_parameter_table(struct device *dev,
 	 * Process 2nd DWORD
 	 */
 	bool is_gt_2_gbits = sfdp_pt_1v0_dw2_is_gt_2_gigabits(data[1]);
-	u32_t bit_size_n = sfdp_pt_1v0_dw2_get_density_n(data[1]);
+	uint32_t bit_size_n = sfdp_pt_1v0_dw2_get_density_n(data[1]);
 
 	if (is_gt_2_gbits) {
 		/* Convert bit size_n to byte size_n */
-		u32_t size_n = bit_size_n - 3;
+		uint32_t size_n = bit_size_n - 3;
 		/* Only 31 bit addressing is supported by the current flash API.
 		 * Maximum supported flash size is 2^31 bytes.
 		 */
@@ -290,7 +290,7 @@ static bool qspi_address_is_valid(struct device *dev, off_t addr, size_t size)
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
 	struct flash_params *flash_params = &dev_data->flash_params;
 
-	return (addr >= 0) && ((u64_t)addr + (u64_t)size <= flash_params->size);
+	return (addr >= 0) && ((uint64_t)addr + (uint64_t)size <= flash_params->size);
 }
 
 static int flash_stm32_qspi_read(struct device *dev, off_t addr, void *data,
@@ -324,7 +324,7 @@ static int flash_stm32_qspi_read(struct device *dev, off_t addr, void *data,
 
 static int qspi_wait_until_ready(struct device *dev)
 {
-	u8_t reg;
+	uint8_t reg;
 	int ret;
 
 	QSPI_CommandTypeDef cmd = {
@@ -397,7 +397,7 @@ static int flash_stm32_qspi_write(struct device *dev, off_t addr,
 		}
 
 		size -= to_write;
-		data = (const u8_t *)data + to_write;
+		data = (const uint8_t *)data + to_write;
 		addr += to_write;
 
 		ret = qspi_wait_until_ready(dev);
@@ -451,7 +451,7 @@ static int flash_stm32_qspi_erase(struct device *dev, off_t addr, size_t size)
 			size -= flash_params->size;
 		} else {
 			for (int i = ARRAY_SIZE(flash_params->sector_layout) - 1; i >= 0; i--) {
-				u32_t block_size = 1 << flash_params->sector_layout[i].size_n;
+				uint32_t block_size = 1 << flash_params->sector_layout[i].size_n;
 
 				if ((block_size > 1) && (size >= block_size)
 				    && SPI_NOR_IS_ADDR_ALIGNED(addr, block_size)) {
@@ -499,6 +499,19 @@ static int flash_stm32_qspi_write_protection_set(struct device *dev,
 	dev_data->write_protection = write_protect;
 
 	return 0;
+}
+
+static const struct flash_parameters flash_stm32_qspi_parameters = {
+	.write_block_size = 1,
+	.erase_value = 0xff
+};
+
+static const struct flash_parameters *
+flash_stm32_qspi_get_parameters(const struct device *dev)
+{
+	ARG_UNUSED(dev);
+
+	return &flash_stm32_qspi_parameters;
 }
 
 static void flash_stm32_qspi_isr(void *arg)
@@ -616,18 +629,18 @@ static const struct flash_driver_api flash_stm32_qspi_driver_api = {
 	.write = flash_stm32_qspi_write,
 	.erase = flash_stm32_qspi_erase,
 	.write_protection = flash_stm32_qspi_write_protection_set,
+	.get_parameters = flash_stm32_qspi_get_parameters,
 #if defined(CONFIG_FLASH_PAGE_LAYOUT)
 	.page_layout = flash_stm32_qspi_pages_layout,
 #endif
-	.write_block_size = 1,
 };
 
 static int flash_stm32_qspi_init(struct device *dev)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
-	u32_t ahb_clock_freq;
-	u32_t prescaler = 0;
+	uint32_t ahb_clock_freq;
+	uint32_t prescaler = 0;
 	int ret;
 
 	__ASSERT_NO_MSG(device_get_binding(STM32_CLOCK_CONTROL_NAME));
@@ -648,7 +661,7 @@ static int flash_stm32_qspi_init(struct device *dev)
 	LOG_DBG("AHB clock running at %u Hz", ahb_clock_freq / (prescaler + 1));
 
 	for (; prescaler <= STM32_QSPI_CLOCK_PRESCALER_MAX; prescaler++) {
-		u32_t clk = ahb_clock_freq / (prescaler + 1);
+		uint32_t clk = ahb_clock_freq / (prescaler + 1);
 
 		if (clk <= SPI_NOR_SFDP_READ_CLOCK_FREQUENCY) {
 			break;
@@ -675,12 +688,12 @@ static int flash_stm32_qspi_init(struct device *dev)
 	}
 
 	union sfdp_header sfdp_header[2];
-	u32_t sfdp_signature;
+	uint32_t sfdp_signature;
 	off_t jedec_pt_addr;
-	u8_t jedec_pt_len;
-	u8_t header_id;
+	uint8_t jedec_pt_len;
+	uint8_t header_id;
 
-	qspi_read_sfdp(dev, SFDP_HEADER_ADDRESS, (u8_t *)sfdp_header,
+	qspi_read_sfdp(dev, SFDP_HEADER_ADDRESS, (uint8_t *)sfdp_header,
 			sizeof(sfdp_header));
 
 	LOG_HEXDUMP_DBG(sfdp_header, sizeof(sfdp_header), "SFDP");
