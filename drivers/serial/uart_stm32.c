@@ -1137,7 +1137,11 @@ static int uart_stm32_async_init(struct device *dev)
 
 	/* Configure dma rx config */
 	memset(&data->rx.blk_cfg, 0, sizeof(data->rx.blk_cfg));
+#if defined(STM32F1) || defined(STM32F2) || defined(STM32F4) || defined(STM32L1)
 	data->rx.blk_cfg.source_address = LL_USART_DMA_GetRegAddr(UartInstance);
+#else
+	data->rx.blk_cfg.source_address = LL_USART_DMA_GetRegAddr(UartInstance, LL_USART_DMA_REG_DATA_RECEIVE);
+#endif
 	data->rx.blk_cfg.dest_address = 0; /* dest not ready */
 	data->rx.blk_cfg.source_addr_adj = data->rx.src_addr_increment ?
 					   DMA_ADDR_ADJ_INCREMENT :
@@ -1158,7 +1162,11 @@ static int uart_stm32_async_init(struct device *dev)
 
 	/* Configure dma tx config */
 	memset(&data->tx.blk_cfg, 0, sizeof(data->tx.blk_cfg));
+#if defined(STM32F1) || defined(STM32F2) || defined(STM32F4) || defined(STM32L1)
 	data->tx.blk_cfg.dest_address = LL_USART_DMA_GetRegAddr(UartInstance);
+#else
+	data->tx.blk_cfg.dest_address = LL_USART_DMA_GetRegAddr(UartInstance, LL_USART_DMA_REG_DATA_TRANSMIT);
+#endif
 	data->tx.blk_cfg.source_address = 0; /* not ready */
 	data->tx.blk_cfg.source_addr_adj = data->tx.src_addr_increment ?
 		DMA_ADDR_ADJ_INCREMENT : DMA_ADDR_ADJ_NO_CHANGE;
