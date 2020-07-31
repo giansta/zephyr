@@ -15,7 +15,6 @@ struct dma_stm32_stream {
 #ifdef CONFIG_DMAMUX_STM32
 	int mux_channel; /* stores the dmamux channel */
 #endif /* CONFIG_DMAMUX_STM32 */
-	bool source_periph;
 	bool busy;
 	uint32_t src_size;
 	uint32_t dst_size;

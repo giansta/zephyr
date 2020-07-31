@@ -123,21 +123,12 @@ static void dma_stm32_irq_handler(void *arg)
 }
 
 static int dma_stm32_width_config(struct dma_config *config,
-				    bool source_periph,
 				    DMA_TypeDef *dma,
 				    LL_DMA_InitTypeDef *DMA_InitStruct,
 				    uint32_t id)
 {
-	uint32_t periph, memory;
 	uint32_t m_size = 0, p_size = 0;
 
-	if (source_periph) {
-		periph = config->source_data_size;
-		memory = config->dest_data_size;
-	} else {
-		periph = config->dest_data_size;
-		memory = config->source_data_size;
-	}
 	int index = find_lsb_set(config->source_data_size) - 1;
 
 	m_size = table_m_size[index];
@@ -384,9 +375,7 @@ static int dma_stm32_configure(struct device *dev, uint32_t id,
 		DMA_InitStruct.Mode = LL_DMA_MODE_NORMAL;
 	}
 
-	stream->source_periph = stream->direction == MEMORY_TO_PERIPHERAL;
-	ret = dma_stm32_width_config(config, stream->source_periph, dma,
-				     &DMA_InitStruct, id);
+	ret = dma_stm32_width_config(config, dma, &DMA_InitStruct, id);
 	if (ret < 0) {
 		return ret;
 	}
@@ -394,9 +383,9 @@ static int dma_stm32_configure(struct device *dev, uint32_t id,
 
 #if defined(CONFIG_DMA_STM32_V1)
 	DMA_InitStruct.MemBurst = stm32_dma_get_mburst(config,
-						       stream->source_periph);
+			(stream->direction == PERIPHERAL_TO_MEMORY));
 	DMA_InitStruct.PeriphBurst = stm32_dma_get_pburst(config,
-							stream->source_periph);
+			(stream->direction == PERIPHERAL_TO_MEMORY));
 
 	if (config->channel_direction != MEMORY_TO_MEMORY) {
 		if (config->dma_slot >= 8) {
@@ -420,7 +409,7 @@ static int dma_stm32_configure(struct device *dev, uint32_t id,
 		DMA_InitStruct.FIFOMode = LL_DMA_FIFOMODE_DISABLE;
 	}
 #endif
-	if (stream->source_periph) {
+	if ((stream->direction == PERIPHERAL_TO_MEMORY)) {
 		DMA_InitStruct.NbData = config->head_block->block_size /
 					config->source_data_size;
 	} else {
@@ -506,7 +495,7 @@ static int dma_stm32_reload(struct device *dev, uint32_t id,
 		return -EINVAL;
 	}
 
-	if (stream->source_periph) {
+	if (stream->direction == PERIPHERAL_TO_MEMORY) {
 		LL_DMA_SetDataLength(dma, table_ll_stream[id],
 				     size / stream->src_size);
 	} else {
