@@ -107,9 +107,19 @@ void test_chained_read_callback(struct uart_event *evt, void *user_data)
 		k_sem_give(&tx_done);
 		break;
 	case UART_RX_RDY:
-		read_ptr = evt->data.rx.buf + evt->data.rx.offset;
-		read_len = evt->data.rx.len;
-		k_sem_give(&rx_rdy);
+		if (read_len == 0) {
+			read_ptr = evt->data.rx.buf + evt->data.rx.offset;
+			read_len = evt->data.rx.len;
+		} else if (evt->data.rx.buf + evt->data.rx.offset ==
+				   read_ptr + read_len) {
+			/* case with time gaps in RX bytes */
+			read_len += evt->data.rx.len;
+		} else {
+			printk("%s unknown error\n", __func__);
+		}
+		if (read_len >= sizeof(chained_read_buf0)) {
+			k_sem_give(&rx_rdy);
+		}
 		break;
 	case UART_RX_BUF_REQUEST:
 		if (buf_num == 1U) {
@@ -158,6 +168,7 @@ void test_chained_read(void)
 		zassert_not_equal(k_sem_take(&rx_disabled, K_MSEC(10)),
 				  0,
 				  "RX_DISABLED occurred");
+		read_len = 0;
 		snprintf(tx_buf, sizeof(tx_buf), "Message %d", i);
 		uart_tx(uart_dev, tx_buf, sizeof(tx_buf), 100);
 		zassert_equal(k_sem_take(&tx_done, K_MSEC(100)), 0,
@@ -167,9 +178,8 @@ void test_chained_read(void)
 		size_t read_len_temp = read_len;
 		printk("read_len: %d, tx_buf_sz: %d\n", read_len,
 		       sizeof(tx_buf));
-	/*TODO	zassert_equal(read_len_temp, sizeof(tx_buf),
+		zassert_equal(read_len_temp, sizeof(tx_buf),
 			      "Incorrect read length");
-	*/
 		zassert_equal(memcmp(tx_buf, read_ptr, sizeof(tx_buf)),
 			      0,
 			      "Buffers not equal");
@@ -331,7 +341,7 @@ void test_write_abort_callback(struct uart_event *evt, void *user_data)
 		k_sem_give(&tx_aborted);
 		break;
 	case UART_RX_RDY:
-		received = evt->data.rx.len;
+		received += evt->data.rx.len;
 		k_sem_give(&rx_rdy);
 		break;
 	case UART_RX_BUF_RELEASED:
@@ -350,6 +360,7 @@ void test_write_abort_setup(void)
 	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
 
 	uart_callback_set(uart_dev, test_write_abort_callback, NULL);
+	received = 0;
 }
 
 void test_write_abort(void)
@@ -369,13 +380,16 @@ void test_write_abort(void)
 	zassert_equal(k_sem_take(&rx_rdy, K_MSEC(100)), 0, "RX_RDY timeout");
 	zassert_equal(memcmp(tx_buf, rx_buf, 5), 0, "Buffers not equal");
 
+	received = 0;
 	uart_tx(uart_dev, tx_buf, 95, 100);
 	uart_tx_abort(uart_dev);
 	zassert_equal(k_sem_take(&tx_aborted, K_MSEC(100)), 0,
 		      "TX_ABORTED timeout");
 	if (sent != 0) {
-		zassert_equal(k_sem_take(&rx_rdy, K_MSEC(100)), 0,
-			      "RX_RDY timeout");
+		while (received < sent) {
+			zassert_equal(k_sem_take(&rx_rdy, K_MSEC(100)), 0,
+					  "RX_RDY timeout");
+		}
 		zassert_equal(sent, received, "Sent is not equal to received.");
 	}
 	uart_rx_disable(uart_dev);
@@ -479,7 +493,7 @@ void test_chained_write_callback(struct uart_event *evt, void *user_data)
 		k_sem_give(&tx_aborted);
 		break;
 	case UART_RX_RDY:
-		received = evt->data.rx.len;
+		received += evt->data.rx.len;
 		k_sem_give(&rx_rdy);
 		break;
 	case UART_RX_BUF_RELEASED:
@@ -498,6 +512,7 @@ void test_chained_write_setup(void)
 	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
 
 	uart_callback_set(uart_dev, test_chained_write_callback, uart_dev);
+	received = 0;
 }
 
 void test_chained_write(void)
@@ -514,7 +529,9 @@ void test_chained_write(void)
 	zassert_equal(k_sem_take(&tx_done, K_MSEC(100)), 0, "TX_DONE timeout");
 	zassert_equal(k_sem_take(&tx_done, K_MSEC(100)), 0, "TX_DONE timeout");
 	zassert_equal(chained_write_next_buf, false, "Sent no message");
-	zassert_equal(k_sem_take(&rx_rdy, K_MSEC(100)), 0, "RX_RDY timeout");
+	while(received < 20) {
+		zassert_equal(k_sem_take(&rx_rdy, K_MSEC(100)), 0, "RX_RDY timeout");
+	}
 	zassert_equal(memcmp(chained_write_tx_bufs[0], rx_buf, 10),
 		      0,
 		      "Buffers not equal");
