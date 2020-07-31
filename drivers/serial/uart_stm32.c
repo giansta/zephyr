@@ -682,7 +682,13 @@ static void async_evt_rx_rdy(void *priv_data)
 	event.data.rx.offset = data->rx.offset;
 
 	if (event.data.rx.len > 0) {
-		async_user_callback(priv_data, &event);
+		async_user_callback(data, &event);
+	}
+
+	if (data->rx.counter >= data->rx.buffer_length) {
+		event.type = UART_RX_BUF_RELEASED;
+		event.data.rx_buf.buf = data->rx.buffer;
+		async_user_callback(data, &event);
 	}
 }
 
@@ -776,11 +782,10 @@ static int uart_stm32_async_rx_disable(struct device *dev)
 		.type = UART_RX_DISABLED
 	};
 
-	struct uart_event event = {
+	struct uart_event released_event = {
 		.type = UART_RX_BUF_RELEASED,
 		.data.rx_buf.buf = data->rx.buffer
 	};
-
 
 	if (data->rx.buffer_length == 0) {
 		async_user_callback(data, &disabled_event);
@@ -792,8 +797,8 @@ static int uart_stm32_async_rx_disable(struct device *dev)
 	k_delayed_work_cancel(&data->rx.timeout_work);
 
 	dma_stop(data->dev_dma_rx, data->rx.dma_channel);
+	async_user_callback(data, &released_event);
 	async_user_callback(data, &disabled_event);
-	async_user_callback(data, &event);
 
 	data->rx_next_buffer = NULL;
 	data->rx_next_buffer_len = 0;
