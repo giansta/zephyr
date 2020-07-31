@@ -892,13 +892,7 @@ static void uart_stm32_dma_rx_cb(void *client_data, uint32_t id, int ret_code)
 	k_delayed_work_cancel(&data->rx.timeout_work);
 
 	if (!dma_get_status(data->dev_dma_rx, data->rx.dma_channel, &stat)) {
-		rx_rcv_len = stat.pending_length;
-	}
-
-	if (rx_rcv_len < data->rx.counter) {
-		/* circular buffer next cycle */
-		data->rx.counter = 0;
-		data->rx.offset = 0;
+		rx_rcv_len = data->rx.buffer_length - stat.pending_length;
 	}
 
 	data->rx.counter = rx_rcv_len;
@@ -1150,9 +1144,9 @@ static int uart_stm32_async_init(struct device *dev)
 	data->rx.blk_cfg.dest_addr_adj = data->rx.dst_addr_increment ?
 					 DMA_ADDR_ADJ_INCREMENT :
 					 DMA_ADDR_ADJ_NO_CHANGE;
-	/* RX enable circular buffer */
-	data->rx.blk_cfg.source_reload_en  = 1;
-	data->rx.blk_cfg.dest_reload_en = 1;
+	/* RX disable circular buffer */
+	data->rx.blk_cfg.source_reload_en  = 0;
+	data->rx.blk_cfg.dest_reload_en = 0;
 	data->rx.blk_cfg.fifo_mode_control = data->rx.fifo_threshold;
 
 	data->rx.dma_cfg.head_block = &data->rx.blk_cfg;
