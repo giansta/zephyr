@@ -668,10 +668,8 @@ static int uart_stm32_async_callback_set(struct device *dev,
 	return 0;
 }
 
-static void async_evt_rx_rdy(void *priv_data)
+static void async_evt_rx_rdy(struct uart_stm32_data *data)
 {
-	struct uart_stm32_data *data = priv_data;
-
 	struct uart_event event;
 
 	printk("rx_rdy: (%d %d)\n", data->rx.offset, data->rx.counter);
@@ -692,9 +690,8 @@ static void async_evt_rx_rdy(void *priv_data)
 	}
 }
 
-static void async_evt_rx_err(void *priv_data, int err_code)
+static void async_evt_rx_err(struct uart_stm32_data *data, int err_code)
 {
-	struct uart_stm32_data *data = priv_data;
 	struct uart_event event = {
 		.type = UART_RX_STOPPED,
 		.data.rx_stop.reason = err_code,
@@ -706,10 +703,8 @@ static void async_evt_rx_err(void *priv_data, int err_code)
 	async_user_callback(data, &event);
 }
 
-static void async_evt_tx_done(void *priv_data)
+static void async_evt_tx_done(struct uart_stm32_data *data)
 {
-	struct uart_stm32_data *data = priv_data;
-
 	struct uart_event event = {
 		.type = UART_TX_DONE,
 		.data.tx.buf = data->tx.buffer,
@@ -724,9 +719,24 @@ static void async_evt_tx_done(void *priv_data)
 	data->tx.counter = 0;
 }
 
-static void async_evt_rx_buf_request(void *priv_data)
+static void async_evt_tx_abort(struct uart_stm32_data *data)
 {
-	struct uart_stm32_data *data = priv_data;
+	struct uart_event event = {
+		.type = UART_TX_ABORTED,
+		.data.tx.buf = data->tx.buffer,
+		.data.tx.len = data->tx.counter
+	};
+
+	async_user_callback(data, &event);
+
+	printk("tx abort:%d\n", event.data.tx.len);
+	/* Reset tx buffer */
+	data->tx.buffer_length = 0;
+	data->tx.counter = 0;
+}
+
+static void async_evt_rx_buf_request(struct uart_stm32_data *data)
+{
 	struct uart_event evt = {
 		.type = UART_RX_BUF_REQUEST,
 	};
@@ -1052,19 +1062,20 @@ static int uart_stm32_async_rx_enable(struct device *dev, uint8_t *rx_buf,
 static int uart_stm32_async_tx_abort(struct device *dev)
 {
 	struct uart_stm32_data *data = DEV_DATA(dev);
+	size_t tx_buffer_length = data->tx.buffer_length;
 	struct dma_status stat;
 
-	if (data->tx.buffer_length == 0) {
+	if (tx_buffer_length == 0) {
 		return -EFAULT;
 	}
 
 	k_delayed_work_cancel(&data->tx.timeout_work);
 	if (!dma_get_status(data->dev_dma_tx, data->tx.dma_channel, &stat)) {
-		data->tx.counter = stat.pending_length;
+		data->tx.counter = tx_buffer_length - stat.pending_length;
 	}
 
 	dma_stop(data->dev_dma_tx, data->tx.dma_channel);
-	async_evt_tx_done(data);
+	async_evt_tx_abort(data);
 
 	return 0;
 }
