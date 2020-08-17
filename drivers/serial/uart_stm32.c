@@ -1017,11 +1017,6 @@ static int uart_stm32_async_rx_enable(struct device *dev, uint8_t *rx_buf,
 	/* Disable RX inerrupts to let DMA to handle it */
 	LL_USART_DisableIT_RXNE(UartInstance);
 
-	/* Enable IRQ IDLE to define the end of a
-	 * RX DMA transaction.
-	 */
-	LL_USART_EnableIT_IDLE(UartInstance);
-
 	reload = data->rx.blk_cfg.dest_address != 0 ? true : false;
 
 	data->rx.blk_cfg.block_size = buf_size;
@@ -1049,6 +1044,11 @@ static int uart_stm32_async_rx_enable(struct device *dev, uint8_t *rx_buf,
 
 	/* Enable RX DMA requests */
 	uart_stm32_dma_rx_enable(dev, true);
+
+	/* Enable IRQ IDLE to define the end of a
+	 * RX DMA transaction.
+	 */
+	LL_USART_EnableIT_IDLE(UartInstance);
 
 	/* Request next buffer */
 	async_evt_rx_buf_request(data);
