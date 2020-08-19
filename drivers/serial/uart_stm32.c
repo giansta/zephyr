@@ -682,12 +682,6 @@ static void async_evt_rx_rdy(struct uart_stm32_data *data)
 	if (event.data.rx.len > 0) {
 		async_user_callback(data, &event);
 	}
-
-	if (data->rx.counter >= data->rx.buffer_length) {
-		event.type = UART_RX_BUF_RELEASED;
-		event.data.rx_buf.buf = data->rx.buffer;
-		async_user_callback(data, &event);
-	}
 }
 
 static void async_evt_rx_err(struct uart_stm32_data *data, int err_code)
@@ -744,6 +738,16 @@ static void async_evt_rx_buf_request(struct uart_stm32_data *data)
 	async_user_callback(data, &evt);
 }
 
+static void async_evt_rx_buf_release(struct uart_stm32_data *data)
+{
+	struct uart_event evt = {
+		.type = UART_RX_BUF_RELEASED,
+		.data.rx_buf.buf = data->rx.buffer,
+	};
+
+	async_user_callback(data, &evt);
+}
+
 static int uart_stm32_dma_tx_enable(struct device *dev, bool enable)
 {
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
@@ -792,22 +796,18 @@ static int uart_stm32_async_rx_disable(struct device *dev)
 		.type = UART_RX_DISABLED
 	};
 
-	struct uart_event released_event = {
-		.type = UART_RX_BUF_RELEASED,
-		.data.rx_buf.buf = data->rx.buffer
-	};
-
 	if (data->rx.buffer_length == 0) {
 		async_user_callback(data, &disabled_event);
 		return -EFAULT;
 	}
+
+	async_evt_rx_buf_release(data);
 
 	uart_stm32_dma_rx_enable(dev, false);
 
 	k_delayed_work_cancel(&data->rx.timeout_work);
 
 	dma_stop(data->dev_dma_rx, data->rx.dma_channel);
-	async_user_callback(data, &released_event);
 	async_user_callback(data, &disabled_event);
 
 	data->rx_next_buffer = NULL;
@@ -916,14 +916,27 @@ static void uart_stm32_dma_rx_cb(void *client_data, uint32_t id, int ret_code)
 	/* update the current pos for new data */
 	data->rx.offset = rx_rcv_len;
 
-	if (data->rx.counter == data->rx.buffer_length &&
-	    data->rx_next_buffer != NULL &&
-	    data->rx_next_buffer != data->rx.buffer) {
-		/* replace the buffer when the current
-		 * is full and not the same as the next
-		 * one.
-		 */
-		uart_stm32_dma_replace_buffer(dev);
+	if (data->rx.counter == data->rx.buffer_length) {
+		if (data->rx_next_buffer != NULL &&
+			data->rx_next_buffer != data->rx.buffer) {
+			async_evt_rx_buf_release(data);
+
+			/* replace the buffer when the current
+			 * is full and not the same as the next
+			 * one.
+			 */
+			uart_stm32_dma_replace_buffer(dev);
+		} else {
+			/* Buffer full without valid next buffer, an UART_RX_DISABLED event
+			 * must be generated, but uart_stm32_async_rx_disable() cannot be
+			 * called in ISR context. So force the RX timeout to minimum value
+			 * and let the RX timeout to do the job.
+			 * TODO: manage circular buffer mode case
+			 */
+			async_timer_start(&data->rx.timeout_work, K_TICKS(1));
+			irq_unlock(key);
+			return;
+		}
 	}
 
 	/* Start the timer again */
