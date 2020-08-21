@@ -32,7 +32,7 @@
 #include "uart_stm32.h"
 
 #include <logging/log.h>
-LOG_MODULE_REGISTER(uart_stm32);
+LOG_MODULE_REGISTER(uart_stm32, CONFIG_SERIAL_LOG_LEVEL);
 
 #define HAS_LPUART_1 (DT_NODE_HAS_COMPAT_STATUS(DT_NODELABEL(lpuart1), \
 					 st_stm32_lpuart, okay))
@@ -632,7 +632,7 @@ static void uart_stm32_isr(void *arg)
 	if (LL_USART_IsEnabledIT_IDLE(UartInstance)
 			&& LL_USART_IsActiveFlag_IDLE(UartInstance)) {
 		LL_USART_ClearFlag_IDLE(UartInstance);
-		printk("idle\n");
+		LOG_DBG("idle");
 		uart_stm32_dma_rx_cb(dev, data->rx.dma_channel, 0);
 	}
 #endif
@@ -672,7 +672,7 @@ static void async_evt_rx_rdy(struct uart_stm32_data *data)
 {
 	struct uart_event event;
 
-	printk("rx_rdy: (%d %d)\n", data->rx.offset, data->rx.counter);
+	LOG_DBG("rx_rdy: (%d %d)", data->rx.offset, data->rx.counter);
 	/* send event only for new data */
 	event.type = UART_RX_RDY;
 	event.data.rx.buf = data->rx.buffer;
@@ -705,12 +705,13 @@ static void async_evt_tx_done(struct uart_stm32_data *data)
 		.data.tx.len = data->tx.counter
 	};
 
-	async_user_callback(data, &event);
-
-	printk("tx done:%d\n", event.data.tx.len);
 	/* Reset tx buffer */
 	data->tx.buffer_length = 0;
 	data->tx.counter = 0;
+
+	async_user_callback(data, &event);
+
+	LOG_DBG("tx done:%d", event.data.tx.len);
 }
 
 static void async_evt_tx_abort(struct uart_stm32_data *data)
@@ -721,12 +722,13 @@ static void async_evt_tx_abort(struct uart_stm32_data *data)
 		.data.tx.len = data->tx.counter
 	};
 
-	async_user_callback(data, &event);
-
-	printk("tx abort:%d\n", event.data.tx.len);
 	/* Reset tx buffer */
 	data->tx.buffer_length = 0;
 	data->tx.counter = 0;
+
+	async_user_callback(data, &event);
+
+	LOG_DBG("tx abort:%d", event.data.tx.len);
 }
 
 static void async_evt_rx_buf_request(struct uart_stm32_data *data)
@@ -761,7 +763,7 @@ static int uart_stm32_dma_tx_enable(struct device *dev, bool enable)
 
 	isEnabled = LL_USART_IsEnabledDMAReq_TX(UartInstance);
 
-	return isEnabled == enable;
+	return isEnabled == enable ? 0 : -EACCES;
 }
 
 static inline int is_dma_rx_enabled(struct device *dev)
@@ -786,7 +788,7 @@ static int uart_stm32_dma_rx_enable(struct device *dev, bool enable)
 	isEnabled = is_dma_rx_enabled(dev);
 
 	data->rx.enabled = isEnabled;
-	return isEnabled == enable;
+	return isEnabled == enable ? 0 : -EACCES;
 }
 
 static int uart_stm32_async_rx_disable(struct device *dev)
@@ -813,7 +815,7 @@ static int uart_stm32_async_rx_disable(struct device *dev)
 	data->rx_next_buffer = NULL;
 	data->rx_next_buffer_len = 0;
 
-	printk("rx: disabled\n");
+	LOG_DBG("rx: disabled");
 	return 0;
 }
 
@@ -829,10 +831,8 @@ static void uart_stm32_dma_tx_cb(void *client_data, uint32_t id, int ret_code)
 
 	k_delayed_work_cancel(&data->tx.timeout_work);
 
-	data->tx.buffer_length = 0;
-
 	if (!dma_get_status(data->dev_dma_tx, data->tx.dma_channel, &stat)) {
-		data->tx.counter = stat.pending_length; /* remaining data */
+		data->tx.counter = data->tx.buffer_length - stat.pending_length;
 	}
 
 	async_evt_tx_done(data);
@@ -849,7 +849,7 @@ static void uart_stm32_dma_replace_buffer(struct device *dev)
 	/* Disable UART RX DMA */
 	uart_stm32_dma_rx_enable(dev, false);
 
-	printk("Replacing RX buffer: %d\n", data->rx_next_buffer_len);
+	LOG_DBG("Replacing RX buffer: %d", data->rx_next_buffer_len);
 
 	/* reload DMA */
 	data->rx.offset = 0;
@@ -880,7 +880,7 @@ static inline void async_timer_start(struct k_delayed_work *work,
 {
 	if (!K_TIMEOUT_EQ(timeout, K_NO_WAIT) &&
 			!K_TIMEOUT_EQ(timeout, K_FOREVER)) {
-		/* start RX timer */
+		/* start timer */
 		k_delayed_work_submit(work, timeout);
 	}
 }
@@ -963,9 +963,9 @@ static int uart_stm32_async_tx(struct device *dev, const uint8_t *tx_data,
 
 	data->tx.buffer = (uint8_t *)tx_data;
 	data->tx.buffer_length = buf_size;
-	data->tx.timeout = K_MSEC(timeout);
+	data->tx.timeout = (timeout == SYS_FOREVER_MS) ? K_FOREVER : K_MSEC(timeout);
 
-	printk("tx: l=%d\n", data->tx.buffer_length);
+	LOG_DBG("tx: l=%d", data->tx.buffer_length);
 
 	/* disable TX interrupt since DMA will handle it */
 	LL_USART_DisableIT_TC(UartInstance);
@@ -993,7 +993,7 @@ static int uart_stm32_async_tx(struct device *dev, const uint8_t *tx_data,
 
 	if (dma_start(data->dev_dma_tx, data->tx.dma_channel)) {
 		LOG_ERR("UART err: TX DMA start failed!");
-		return -1;
+		return -EFAULT;
 	}
 
 	/* Start TX timer */
@@ -1016,18 +1016,17 @@ static int uart_stm32_async_rx_enable(struct device *dev, uint8_t *rx_buf,
 	}
 
 	if (data->rx.enabled) {
-		LOG_INF("RX was already enabled");
+		LOG_WRN("RX was already enabled");
 		return -EBUSY;
-
 	}
 
 	data->rx.offset = 0;
 	data->rx.buffer = rx_buf;
 	data->rx.buffer_length = buf_size;
 	data->rx.counter = 0;
-	data->rx.timeout = K_MSEC(timeout);
+	data->rx.timeout = (timeout == SYS_FOREVER_MS) ? K_FOREVER : K_MSEC(timeout);
 
-	/* Disable RX inerrupts to let DMA to handle it */
+	/* Disable RX interrupts to let DMA to handle it */
 	LL_USART_DisableIT_RXNE(UartInstance);
 
 	reload = data->rx.blk_cfg.dest_address != 0 ? true : false;
@@ -1052,7 +1051,7 @@ static int uart_stm32_async_rx_enable(struct device *dev, uint8_t *rx_buf,
 
 	if (dma_start(data->dev_dma_rx, data->rx.dma_channel)) {
 		LOG_ERR("UART ERR: RX DMA start failed!");
-		return -1;
+		return -EFAULT;
 	}
 
 	/* Enable RX DMA requests */
@@ -1124,7 +1123,7 @@ static int uart_stm32_async_rx_buf_rsp(struct device *dev, uint8_t *buf,
 {
 	struct uart_stm32_data *data = DEV_DATA(dev);
 
-	printk("replace buffer (%d)\n", len);
+	LOG_DBG("replace buffer (%d)", len);
 	data->rx_next_buffer = buf;
 	data->rx_next_buffer_len = len;
 	return 0;
