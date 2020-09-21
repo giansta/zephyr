@@ -28,11 +28,16 @@
 	COND_CODE_1(DT_NODE_HAS_COMPAT(GPARENT(part), nordic_qspi_nor), \
 		    (DT_LABEL(GPARENT(part))), (_else_code))
 
+#define IS_ST_STM32_QUADSPI(part, _else_code) \
+	COND_CODE_1(DT_NODE_HAS_COMPAT(GPARENT(part), st_stm32_quadspi), \
+		    (DT_LABEL(GPARENT(part))), (_else_code))
+
 /* return flash controller label based on matching compatible or NULL */
 #define DT_FLASH_DEV_FROM_PART(part) \
 	IS_SOC_NV_FLASH(part, \
 	IS_JEDEC_SPI_NOR(part, \
-	IS_NORDIC_QSPI_NOR(part, NULL)))
+	IS_NORDIC_QSPI_NOR(part, \
+	IS_ST_STM32_QUADSPI(part, NULL))))
 
 #define FLASH_AREA_FOO(part)				\
 	{.fa_id = DT_FIXED_PARTITION_ID(part),		\
