@@ -43,6 +43,10 @@ static struct bt_mesh_cfg_srv *conf;
 
 static struct label labels[CONFIG_BT_MESH_LABEL_COUNT];
 
+#if CONFIG_BT_MESH_LABEL_COUNT > 0
+static uint8_t va_del(uint8_t *label_uuid, uint16_t *addr);
+#endif
+
 static int comp_add_elem(struct net_buf_simple *buf, struct bt_mesh_elem *elem,
 			 bool primary)
 {
@@ -233,6 +237,16 @@ static uint8_t _mod_pub_set(struct bt_mesh_model *model, uint16_t pub_addr,
 	if (!bt_mesh_app_key_find(app_idx)) {
 		return STATUS_INVALID_APPKEY;
 	}
+
+#if CONFIG_BT_MESH_LABEL_COUNT > 0
+	if (BT_MESH_ADDR_IS_VIRTUAL(model->pub->addr)) {
+		uint8_t *uuid = bt_mesh_label_uuid_get(model->pub->addr);
+
+		if (uuid) {
+			va_del(uuid, NULL);
+		}
+	}
+#endif
 
 	model->pub->addr = pub_addr;
 	model->pub->key = app_idx;
@@ -779,7 +793,7 @@ static void gatt_proxy_set(struct bt_mesh_model *model,
 	}
 
 	if (cfg->hb_pub.feat & BT_MESH_FEAT_PROXY) {
-		bt_mesh_heartbeat_send();
+		(void)bt_mesh_heartbeat_send(NULL, NULL);
 	}
 
 send_status:
@@ -885,7 +899,7 @@ static void relay_set(struct bt_mesh_model *model,
 		       BT_MESH_TRANSMIT_INT(cfg->relay_retransmit));
 
 		if ((cfg->hb_pub.feat & BT_MESH_FEAT_RELAY) && change) {
-			bt_mesh_heartbeat_send();
+			(void)bt_mesh_heartbeat_send(NULL, NULL);
 		}
 	} else {
 		BT_WARN("Invalid Relay value 0x%02x", buf->data[0]);
@@ -1230,9 +1244,14 @@ static void mod_pub_va_set(struct bt_mesh_model *model,
 	}
 
 	status = va_add(label_uuid, &pub_addr);
-	if (status == STATUS_SUCCESS) {
-		status = _mod_pub_set(mod, pub_addr, pub_app_idx, cred_flag,
-				      pub_ttl, pub_period, retransmit, true);
+	if (status != STATUS_SUCCESS) {
+		goto send_status;
+	}
+
+	status = _mod_pub_set(mod, pub_addr, pub_app_idx, cred_flag, pub_ttl,
+			      pub_period, retransmit, true);
+	if (status != STATUS_SUCCESS) {
+		va_del(label_uuid, NULL);
 	}
 
 send_status:
@@ -1698,6 +1717,7 @@ static void mod_sub_get_vnd(struct bt_mesh_model *model,
 			    struct net_buf_simple *buf)
 {
 	NET_BUF_SIMPLE_DEFINE(msg, BT_MESH_TX_SDU_MAX);
+	struct mod_sub_list_ctx visit_ctx;
 	struct bt_mesh_model *mod;
 	struct bt_mesh_elem *elem;
 	uint16_t company, addr, id;
@@ -1739,8 +1759,10 @@ static void mod_sub_get_vnd(struct bt_mesh_model *model,
 	net_buf_simple_add_le16(&msg, company);
 	net_buf_simple_add_le16(&msg, id);
 
+	visit_ctx.msg = &msg;
+	visit_ctx.elem_idx = mod->elem_idx;
 	bt_mesh_model_tree_walk(bt_mesh_model_root(mod), mod_sub_list_visitor,
-				&msg);
+				&visit_ctx);
 
 send_list:
 	if (bt_mesh_model_send(model, ctx, &msg, NULL, NULL)) {
@@ -1797,6 +1819,7 @@ static void mod_sub_va_add(struct bt_mesh_model *model,
 	if (bt_mesh_model_find_group(&mod, sub_addr)) {
 		/* Tried to add existing subscription */
 		status = STATUS_SUCCESS;
+		va_del(label_uuid, NULL);
 		goto send_status;
 	}
 
@@ -1804,6 +1827,7 @@ static void mod_sub_va_add(struct bt_mesh_model *model,
 	entry = bt_mesh_model_find_group(&mod, BT_MESH_ADDR_UNASSIGNED);
 	if (!entry) {
 		status = STATUS_INSUFF_RESOURCES;
+		va_del(label_uuid, NULL);
 		goto send_status;
 	}
 
@@ -1932,11 +1956,11 @@ static void mod_sub_va_overwrite(struct bt_mesh_model *model,
 
 
 	if (ARRAY_SIZE(mod->groups) > 0) {
-		bt_mesh_model_tree_walk(bt_mesh_model_root(mod),
-					mod_sub_clear_visitor, NULL);
 
 		status = va_add(label_uuid, &sub_addr);
 		if (status == STATUS_SUCCESS) {
+			bt_mesh_model_tree_walk(bt_mesh_model_root(mod),
+						mod_sub_clear_visitor, NULL);
 			mod->groups[0] = sub_addr;
 
 			if (IS_ENABLED(CONFIG_BT_SETTINGS)) {
@@ -2207,7 +2231,7 @@ static void net_key_update(struct bt_mesh_model *model,
 			send_net_key_status(model, ctx, idx, STATUS_SUCCESS);
 			return;
 		}
-		/* fall through */
+		__fallthrough;
 	case BT_MESH_KR_PHASE_2:
 	case BT_MESH_KR_PHASE_3:
 		send_net_key_status(model, ctx, idx, STATUS_CANNOT_UPDATE);
@@ -2619,6 +2643,8 @@ static void node_reset(struct bt_mesh_model *model,
 		       struct bt_mesh_msg_ctx *ctx,
 		       struct net_buf_simple *buf)
 {
+	static struct bt_mesh_proxy_idle_cb proxy_idle = {.cb = bt_mesh_reset};
+
 	BT_MESH_MODEL_BUF_DEFINE(msg, OP_NODE_RESET_STATUS, 0);
 
 	BT_DBG("net_idx 0x%04x app_idx 0x%04x src 0x%04x len %u: %s",
@@ -2635,7 +2661,15 @@ static void node_reset(struct bt_mesh_model *model,
 		BT_ERR("Unable to send Node Reset Status");
 	}
 
-	bt_mesh_reset();
+	if (!IS_ENABLED(CONFIG_BT_MESH_GATT_PROXY)) {
+		bt_mesh_reset();
+		return;
+	}
+
+	/* If the response goes to a proxy node, we'll wait for the sending to
+	 * complete before moving on.
+	 */
+	bt_mesh_proxy_on_idle(&proxy_idle);
 }
 
 static void send_friend_status(struct bt_mesh_model *model,
@@ -2697,7 +2731,7 @@ static void friend_set(struct bt_mesh_model *model,
 	}
 
 	if (cfg->hb_pub.feat & BT_MESH_FEAT_FRIEND) {
-		bt_mesh_heartbeat_send();
+		(void)bt_mesh_heartbeat_send(NULL, NULL);
 	}
 
 send_status:
@@ -2823,6 +2857,11 @@ static void krp_set(struct bt_mesh_model *model, struct bt_mesh_msg_ctx *ctx,
 	    phase == BT_MESH_KR_PHASE_2) {
 		sub->kr_phase = BT_MESH_KR_PHASE_2;
 		sub->kr_flag = 1;
+		if (IS_ENABLED(CONFIG_BT_SETTINGS)) {
+		    BT_DBG("Storing krp phase persistently");
+		    bt_mesh_store_subnet(sub);
+		}
+
 		bt_mesh_net_beacon_update(sub);
 	} else if ((sub->kr_phase == BT_MESH_KR_PHASE_1 ||
 		    sub->kr_phase == BT_MESH_KR_PHASE_2) &&
@@ -2832,6 +2871,7 @@ static void krp_set(struct bt_mesh_model *model, struct bt_mesh_msg_ctx *ctx,
 		    IS_ENABLED(CONFIG_BT_MESH_FRIEND)) {
 			friend_cred_refresh(ctx->net_idx);
 		}
+
 		sub->kr_phase = BT_MESH_KR_NORMAL;
 		sub->kr_flag = 0;
 		bt_mesh_net_beacon_update(sub);
@@ -3183,13 +3223,39 @@ const struct bt_mesh_model_op bt_mesh_cfg_srv_op[] = {
 	BT_MESH_MODEL_OP_END,
 };
 
+static void hb_publish_end_cb(int err, void *cb_data)
+{
+	struct bt_mesh_cfg_srv *cfg = cb_data;
+	uint16_t period_ms;
+
+	period_ms = hb_pwr2(cfg->hb_pub.period, 1) * 1000U;
+	if (period_ms && cfg->hb_pub.count > 1) {
+		k_delayed_work_submit(&cfg->hb_pub.timer, K_MSEC(period_ms));
+	}
+
+	if (cfg->hb_pub.count != 0xffff) {
+		cfg->hb_pub.count--;
+	}
+}
+
+static void hb_publish_start_cb(uint16_t duration, int err, void *cb_data)
+{
+	if (err) {
+		hb_publish_end_cb(err, cb_data);
+	}
+}
+
 static void hb_publish(struct k_work *work)
 {
+	static const struct bt_mesh_send_cb publish_cb = {
+		.start = hb_publish_start_cb,
+		.end = hb_publish_end_cb,
+	};
 	struct bt_mesh_cfg_srv *cfg = CONTAINER_OF(work,
 						   struct bt_mesh_cfg_srv,
 						   hb_pub.timer.work);
 	struct bt_mesh_subnet *sub;
-	uint16_t period_ms;
+	int err;
 
 	BT_DBG("hb_pub.count: %u", cfg->hb_pub.count);
 
@@ -3205,15 +3271,9 @@ static void hb_publish(struct k_work *work)
 		return;
 	}
 
-	period_ms = hb_pwr2(cfg->hb_pub.period, 1) * 1000U;
-	if (period_ms && cfg->hb_pub.count > 1) {
-		k_delayed_work_submit(&cfg->hb_pub.timer, K_MSEC(period_ms));
-	}
-
-	bt_mesh_heartbeat_send();
-
-	if (cfg->hb_pub.count != 0xffff) {
-		cfg->hb_pub.count--;
+	err = bt_mesh_heartbeat_send(&publish_cb, cfg);
+	if (err) {
+		hb_publish_end_cb(err, cfg);
 	}
 }
 
@@ -3501,6 +3561,8 @@ void bt_mesh_subnet_del(struct bt_mesh_subnet *sub, bool store)
 	if (IS_ENABLED(CONFIG_BT_MESH_FRIEND)) {
 		bt_mesh_friend_clear_net_idx(sub->net_idx);
 	}
+
+	bt_mesh_net_loopback_clear(sub->net_idx);
 
 	if (IS_ENABLED(CONFIG_BT_SETTINGS) && store) {
 		bt_mesh_clear_subnet(sub);

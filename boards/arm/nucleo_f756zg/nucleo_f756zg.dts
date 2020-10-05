@@ -10,7 +10,7 @@
 
 / {
 	model = "STMicroelectronics STM32F756ZG-NUCLEO board";
-	compatible = "st,stm32f756zg-nucleo", "st,stm32f756";
+	compatible = "st,stm32f756zg-nucleo";
 
 	chosen {
 		zephyr,console = &usart3;
@@ -89,5 +89,9 @@
 	 * WARNING: The pin PA7 will conflict on selection of SPI_1 and
 	 *          ETH_STM32_HAL. See pinmux.c for further details.
 	 */
+	status = "okay";
+};
+
+&mac {
 	status = "okay";
 };

@@ -201,7 +201,10 @@ static void on_write(int retry_cnt)
 static int data_out_block_mode(uint8_t *data, size_t length, void *ctx)
 {
 	int ret = 0;
-	int retry_cnt = CONFIG_LOG_BACKEND_RTT_RETRY_CNT;
+	/* This function is also called in drop mode for synchronous operation
+	 * in that case retry is undesired */
+	int retry_cnt = IS_ENABLED(CONFIG_LOG_BACKEND_RTT_MODE_BLOCK) ?
+			 CONFIG_LOG_BACKEND_RTT_RETRY_CNT : 1;
 
 	do {
 		if (!is_sync_mode()) {
@@ -225,8 +228,9 @@ static int data_out_block_mode(uint8_t *data, size_t length, void *ctx)
 	return ((ret == 0) && host_present) ? 0 : length;
 }
 
-LOG_OUTPUT_DEFINE(log_output, IS_ENABLED(CONFIG_LOG_BACKEND_RTT_MODE_BLOCK) ?
-		  data_out_block_mode : data_out_drop_mode,
+LOG_OUTPUT_DEFINE(log_output_rtt,
+		  IS_ENABLED(CONFIG_LOG_BACKEND_RTT_MODE_BLOCK) ?
+			  data_out_block_mode : data_out_drop_mode,
 		  char_buf, sizeof(char_buf));
 
 static void put(const struct log_backend *const backend,
@@ -235,7 +239,7 @@ static void put(const struct log_backend *const backend,
 	uint32_t flag = IS_ENABLED(CONFIG_LOG_BACKEND_RTT_SYST_ENABLE) ?
 		LOG_OUTPUT_FLAG_FORMAT_SYST : 0;
 
-	log_backend_std_put(&log_output, flag, msg);
+	log_backend_std_put(&log_output_rtt, flag, msg);
 }
 
 static void log_backend_rtt_cfg(void)
@@ -258,14 +262,14 @@ static void log_backend_rtt_init(void)
 static void panic(struct log_backend const *const backend)
 {
 	panic_mode = true;
-	log_backend_std_panic(&log_output);
+	log_backend_std_panic(&log_output_rtt);
 }
 
 static void dropped(const struct log_backend *const backend, uint32_t cnt)
 {
 	ARG_UNUSED(backend);
 
-	log_backend_std_dropped(&log_output, cnt);
+	log_backend_std_dropped(&log_output_rtt, cnt);
 }
 
 static void sync_string(const struct log_backend *const backend,
@@ -275,7 +279,7 @@ static void sync_string(const struct log_backend *const backend,
 	uint32_t flag = IS_ENABLED(CONFIG_LOG_BACKEND_RTT_SYST_ENABLE) ?
 		LOG_OUTPUT_FLAG_FORMAT_SYST : 0;
 
-	log_backend_std_sync_string(&log_output, flag, src_level,
+	log_backend_std_sync_string(&log_output_rtt, flag, src_level,
 				    timestamp, fmt, ap);
 }
 
@@ -286,7 +290,7 @@ static void sync_hexdump(const struct log_backend *const backend,
 	uint32_t flag = IS_ENABLED(CONFIG_LOG_BACKEND_RTT_SYST_ENABLE) ?
 		LOG_OUTPUT_FLAG_FORMAT_SYST : 0;
 
-	log_backend_std_sync_hexdump(&log_output, flag, src_level,
+	log_backend_std_sync_hexdump(&log_output_rtt, flag, src_level,
 				     timestamp, metadata, data, length);
 }
 

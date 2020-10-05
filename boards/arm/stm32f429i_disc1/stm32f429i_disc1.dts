@@ -9,7 +9,7 @@
 
 / {
 	model = "STMicroelectronics STM32F429I_DISC1 board";
-	compatible = "st,stm32f4discovery", "st,stm32f429";
+	compatible = "st,stm32f4discovery";
 
 	chosen {
 		zephyr,console = &usart1;
@@ -66,7 +66,7 @@
 
 &spi5 {
 	status = "okay";
-	cs-gpios = <&gpioc 2 0>;
+	cs-gpios = <&gpioc 2 GPIO_ACTIVE_LOW>;
 	ili9340@0 {
 		compatible = "ilitek,ili9340";
 		label = "DISPLAY";

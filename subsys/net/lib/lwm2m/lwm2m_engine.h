@@ -35,6 +35,9 @@
 #define NOTIFY_OBSERVER(o, i, r)	lwm2m_notify_observer(o, i, r)
 #define NOTIFY_OBSERVER_PATH(path)	lwm2m_notify_observer_path(path)
 
+/* Use this value to generate new token */
+#define LWM2M_MSG_TOKEN_GENERATE_NEW 0U
+
 /* Use this value to skip token generation */
 #define LWM2M_MSG_TOKEN_LEN_SKIP	0xFF
 
@@ -106,6 +109,7 @@ int lwm2m_security_index_to_inst_id(int index);
 
 int32_t lwm2m_server_get_pmin(uint16_t obj_inst_id);
 int32_t lwm2m_server_get_pmax(uint16_t obj_inst_id);
+int lwm2m_server_short_id_to_inst(uint16_t short_id);
 
 #if defined(CONFIG_LWM2M_FIRMWARE_UPDATE_OBJ_SUPPORT)
 uint8_t lwm2m_firmware_get_update_state(void);

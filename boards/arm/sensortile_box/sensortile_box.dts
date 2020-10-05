@@ -9,7 +9,7 @@
 
 / {
 	model = "STMicroelectronics SensorTile.box board";
-	compatible = "st,sensortile-box", "st,stm32l4r9";
+	compatible = "st,sensortile-box";
 
 	chosen {
 		zephyr,console = &usart1;
@@ -31,9 +31,18 @@
 		};
 	};
 
+	gpio_keys {
+		compatible = "gpio-keys";
+		user_button: button {
+			label = "User PB1";
+			gpios = <&gpiog 1 GPIO_ACTIVE_LOW>;
+		};
+	};
+
 	aliases {
 		led0 = &blue_led;
 		led1 = &green_led;
+		sw0 = &user_button;
 	};
 };
 
@@ -81,7 +90,7 @@
 &spi1 {
 	status = "okay";
 
-	cs-gpios = <&gpioe 11 0>, <&gpioe 12 0>, <&gpioe 10 0>;
+	cs-gpios = <&gpioe 11 GPIO_ACTIVE_LOW>, <&gpioe 12 GPIO_ACTIVE_LOW>, <&gpioe 10 GPIO_ACTIVE_LOW>;
 
 	lis2dw12@0 {
 		compatible = "st,lis2dw12";
@@ -111,7 +120,7 @@
 &spi3 {
 	status = "okay";
 
-	cs-gpios = <&gpioa 15 0>;
+	cs-gpios = <&gpioa 15 GPIO_ACTIVE_LOW>;
 
 	lis2mdl@0 {
 		compatible = "st,lis2mdl";
@@ -140,7 +149,7 @@
 &flash0 {
 	/*
 	 * For more information, see:
-	 * http://docs.zephyrproject.org/latest/guides/dts/index.html#flash-partitions
+	 * https://docs.zephyrproject.org/latest/guides/dts/legacy-macros.html#legacy-flash-partitions
 	 */
 	partitions {
 		compatible = "fixed-partitions";

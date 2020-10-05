@@ -10,6 +10,7 @@ LOG_MODULE_REGISTER(net_mqtt_publisher_sample, LOG_LEVEL_DBG);
 #include <zephyr.h>
 #include <net/socket.h>
 #include <net/mqtt.h>
+#include <random/rand32.h>
 
 #include <string.h>
 #include <errno.h>
@@ -377,7 +378,7 @@ static int try_to_connect(struct mqtt_client *client)
 
 		prepare_fds(client);
 
-		if (wait(APP_SLEEP_MSECS)) {
+		if (wait(APP_CONNECT_TIMEOUT_MS)) {
 			mqtt_input(client);
 		}
 

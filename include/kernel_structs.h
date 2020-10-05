@@ -58,11 +58,8 @@
 /* Thread is suspended */
 #define _THREAD_SUSPENDED (BIT(4))
 
-/* Thread is being aborted (SMP only) */
+/* Thread is being aborted */
 #define _THREAD_ABORTING (BIT(5))
-
-/* Thread was aborted in interrupt context (SMP only) */
-#define _THREAD_ABORTED_IN_ISR (BIT(6))
 
 /* Thread is present in the ready queue */
 #define _THREAD_QUEUED (BIT(7))
@@ -111,6 +108,9 @@ struct _cpu {
 
 	/* one assigned idle thread per CPU */
 	struct k_thread *idle_thread;
+
+	/* If non-null, self-aborted thread that needs cleanup */
+	struct k_thread *pending_abort;
 
 #if (CONFIG_NUM_METAIRQ_PRIORITIES > 0) && (CONFIG_NUM_COOP_PRIORITIES > 0)
 	/* Coop thread preempted by current metairq, or NULL */
@@ -223,9 +223,9 @@ struct _timeout {
 	_timeout_func_t fn;
 #ifdef CONFIG_TIMEOUT_64BIT
 	/* Can't use k_ticks_t for header dependency reasons */
-	uint64_t dticks;
+	int64_t dticks;
 #else
-	uint32_t dticks;
+	int32_t dticks;
 #endif
 };
 

@@ -6,8 +6,10 @@
  */
 
 #include <zephyr.h>
+#include <soc.h>
 #include <bluetooth/hci.h>
 
+#include "hal/cpu.h"
 #include "hal/ccm.h"
 #include "hal/radio.h"
 #include "hal/ticker.h"
@@ -41,7 +43,6 @@
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
 #define LOG_MODULE_NAME bt_ctlr_ull_scan
 #include "common/log.h"
-#include <soc.h>
 #include "hal/debug.h"
 
 static int init_reset(void);
@@ -263,9 +264,9 @@ void ull_scan_params_set(struct lll_scan *lll, uint8_t type, uint16_t interval,
 
 uint8_t ull_scan_enable(struct ll_scan_set *scan)
 {
-	volatile uint32_t ret_cb = TICKER_STATUS_BUSY;
 	struct lll_scan *lll = &scan->lll;
 	uint32_t ticks_slot_overhead;
+	uint32_t volatile ret_cb;
 	uint32_t ticks_interval;
 	uint32_t ticks_anchor;
 	uint32_t ret;
@@ -273,10 +274,6 @@ uint8_t ull_scan_enable(struct ll_scan_set *scan)
 	lll->chan = 0;
 	lll->init_addr_type = scan->own_addr_type;
 	ll_addr_get(lll->init_addr_type, lll->init_addr);
-
-#if defined(CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL)
-	lll->tx_pwr_lvl = RADIO_TXP_DEFAULT;
-#endif /* CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL */
 
 	ull_hdr_init(&scan->ull);
 	lll_hdr_init(lll, scan);
@@ -297,10 +294,14 @@ uint8_t ull_scan_enable(struct ll_scan_set *scan)
 			(lll->ticks_window +
 			 HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_START_US));
 	} else {
-		scan->evt.ticks_slot =
-			(ticks_interval -
-			 HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_XTAL_US));
-		lll->ticks_window = 0;
+		if (IS_ENABLED(CONFIG_BT_CTLR_SCAN_UNRESERVED)) {
+			scan->evt.ticks_slot = 0U;
+		} else {
+			scan->evt.ticks_slot = ticks_interval -
+				HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_XTAL_US);
+		}
+
+		lll->ticks_window = 0U;
 	}
 
 	if (IS_ENABLED(CONFIG_BT_CTLR_LOW_LAT)) {
@@ -335,6 +336,7 @@ uint8_t ull_scan_enable(struct ll_scan_set *scan)
 
 	uint8_t handle = ull_scan_handle_get(scan);
 
+	ret_cb = TICKER_STATUS_BUSY;
 	ret = ticker_start(TICKER_INSTANCE_ID_CTLR,
 			   TICKER_USER_ID_THREAD, TICKER_ID_SCAN_BASE + handle,
 			   ticks_anchor, 0, ticks_interval,
@@ -343,7 +345,6 @@ uint8_t ull_scan_enable(struct ll_scan_set *scan)
 			   (scan->evt.ticks_slot + ticks_slot_overhead),
 			   ticker_cb, scan,
 			   ull_ticker_status_give, (void *)&ret_cb);
-
 	ret = ull_ticker_status_take(ret, &ret_cb);
 	if (ret != TICKER_STATUS_SUCCESS) {
 		return BT_HCI_ERR_CMD_DISALLOWED;
@@ -365,17 +366,17 @@ uint8_t ull_scan_enable(struct ll_scan_set *scan)
 
 uint8_t ull_scan_disable(uint8_t handle, struct ll_scan_set *scan)
 {
-	volatile uint32_t ret_cb = TICKER_STATUS_BUSY;
+	uint32_t volatile ret_cb;
 	void *mark;
 	uint32_t ret;
 
 	mark = ull_disable_mark(scan);
 	LL_ASSERT(mark == scan);
 
+	ret_cb = TICKER_STATUS_BUSY;
 	ret = ticker_stop(TICKER_INSTANCE_ID_CTLR, TICKER_USER_ID_THREAD,
 			  TICKER_ID_SCAN_BASE + handle,
 			  ull_ticker_status_give, (void *)&ret_cb);
-
 	ret = ull_ticker_status_take(ret, &ret_cb);
 	if (ret) {
 		mark = ull_disable_unmark(scan);
@@ -470,6 +471,11 @@ uint32_t ull_scan_filter_pol_get(uint8_t handle)
 
 static int init_reset(void)
 {
+#if defined(CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL) && \
+	!defined(CONFIG_BT_CTLR_ADV_EXT)
+	ll_scan[0].lll.tx_pwr_lvl = RADIO_TXP_DEFAULT;
+#endif /* CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL && !CONFIG_BT_CTLR_ADV_EXT */
+
 	return 0;
 }
 

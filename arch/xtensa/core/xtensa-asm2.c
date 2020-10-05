@@ -57,23 +57,14 @@ void *xtensa_init_stack(int *stack_top,
 }
 
 void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
-		     size_t sz, k_thread_entry_t entry,
-		     void *p1, void *p2, void *p3,
-		     int prio, unsigned int opts)
+		     char *stack_ptr, k_thread_entry_t entry,
+		     void *p1, void *p2, void *p3)
 {
-	char *base = Z_THREAD_STACK_BUFFER(stack);
-	char *top = base + sz;
-
-	/* Align downward.  The API as specified requires a runtime check. */
-	top = (char *)(((unsigned int)top) & ~3);
-
-	z_new_thread_init(thread, base, sz);
-
-	thread->switch_handle = xtensa_init_stack((void *)top, entry,
+	thread->switch_handle = xtensa_init_stack((int *)stack_ptr, entry,
 						  p1, p2, p3);
 }
 
-void z_irq_spurious(void *arg)
+void z_irq_spurious(const void *arg)
 {
 	int irqs, ie;
 

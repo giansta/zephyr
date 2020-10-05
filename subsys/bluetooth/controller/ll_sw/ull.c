@@ -8,13 +8,15 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#include <zephyr/types.h>
+#include <zephyr.h>
+#include <soc.h>
 #include <device.h>
 #include <drivers/entropy.h>
 #include <bluetooth/hci.h>
 
-#include "hal/cntr.h"
+#include "hal/cpu.h"
 #include "hal/ccm.h"
+#include "hal/cntr.h"
 #include "hal/ticker.h"
 
 #include "util/util.h"
@@ -108,8 +110,8 @@
 #define BT_CONN_TICKER_NODES 0
 #endif
 
-#if defined(CONFIG_SOC_FLASH_NRF_RADIO_SYNC)
-#define FLASH_TICKER_NODES        1 /* No. of tickers reserved for flashing */
+#if defined(CONFIG_SOC_FLASH_NRF_RADIO_SYNC_TICKER)
+#define FLASH_TICKER_NODES        2 /* No. of tickers reserved for flashing */
 #define FLASH_TICKER_USER_APP_OPS 1 /* No. of additional ticker operations */
 #else
 #define FLASH_TICKER_NODES        0
@@ -223,7 +225,8 @@ static MFIFO_DEFINE(pdu_rx_free, sizeof(void *), PDU_RX_CNT);
 #endif
 
 #define PDU_RX_POOL_SIZE (PDU_RX_NODE_POOL_ELEMENT_SIZE * \
-			  (RX_CNT + BT_CTLR_MAX_CONNECTABLE))
+			  (RX_CNT + BT_CTLR_MAX_CONNECTABLE + \
+			   BT_CTLR_ADV_SET))
 
 static struct {
 	void *free;
@@ -231,7 +234,8 @@ static struct {
 } mem_pdu_rx;
 
 #define LINK_RX_POOL_SIZE (sizeof(memq_link_t) * (RX_CNT + 2 + \
-						  BT_CTLR_MAX_CONN))
+						  BT_CTLR_MAX_CONN + \
+						  BT_CTLR_ADV_SET))
 static struct {
 	uint8_t quota_pdu; /* Number of un-utilized buffers */
 
@@ -558,6 +562,7 @@ void ll_rx_dequeue(void)
 	/* handle object specific clean up */
 	switch (rx->type) {
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
+#if defined(CONFIG_BT_OBSERVER)
 	case NODE_RX_TYPE_EXT_1M_REPORT:
 	case NODE_RX_TYPE_EXT_2M_REPORT:
 	case NODE_RX_TYPE_EXT_CODED_REPORT:
@@ -581,6 +586,48 @@ void ll_rx_dequeue(void)
 		}
 	}
 	break;
+#endif /* CONFIG_BT_OBSERVER */
+
+#if defined(CONFIG_BT_BROADCASTER)
+	case NODE_RX_TYPE_EXT_ADV_TERMINATE:
+	{
+		struct ll_adv_set *adv;
+
+		adv = ull_adv_set_get(rx->handle);
+
+#if defined(CONFIG_BT_PERIPHERAL)
+		struct lll_conn *lll_conn = adv->lll.conn;
+
+		if (!lll_conn) {
+			adv->is_enabled = 0U;
+
+			break;
+		}
+
+		LL_ASSERT(!lll_conn->link_tx_free);
+
+		memq_link_t *link = memq_deinit(&lll_conn->memq_tx.head,
+						&lll_conn->memq_tx.tail);
+		LL_ASSERT(link);
+
+		lll_conn->link_tx_free = link;
+
+		struct ll_conn *conn = (void *)HDR_LLL2EVT(lll_conn);
+
+		ll_conn_release(conn);
+		adv->lll.conn = NULL;
+
+		ll_rx_release(adv->node_rx_cc_free);
+		adv->node_rx_cc_free = NULL;
+
+		ll_rx_link_release(adv->link_cc_free);
+		adv->link_cc_free = NULL;
+#endif /* CONFIG_BT_PERIPHERAL */
+
+		adv->is_enabled = 0U;
+	}
+	break;
+#endif /* CONFIG_BT_BROADCASTER */
 #endif /* CONFIG_BT_CTLR_ADV_EXT */
 
 #if defined(CONFIG_BT_CONN)
@@ -646,7 +693,7 @@ void ll_rx_dequeue(void)
 			 * enabled status bitmask
 			 */
 			bm = (IS_ENABLED(CONFIG_BT_OBSERVER) &&
-			      ull_scan_is_enabled(0) << 1) |
+			      (ull_scan_is_enabled(0) << 1)) |
 			     (IS_ENABLED(CONFIG_BT_BROADCASTER) &&
 			      ull_adv_is_enabled(0));
 
@@ -707,9 +754,8 @@ void ll_rx_dequeue(void)
 
 #if defined(CONFIG_BT_CTLR_USER_EXT)
 	case NODE_RX_TYPE_USER_START ... NODE_RX_TYPE_USER_END:
+		__fallthrough;
 #endif /* CONFIG_BT_CTLR_USER_EXT */
-
-	/* fall through */
 
 	/* Ensure that at least one 'case' statement is present for this
 	 * code block.
@@ -811,7 +857,7 @@ void ll_rx_mem_release(void **node_rx)
 			}
 		}
 
-		/* passthrough */
+		__fallthrough;
 		case NODE_RX_TYPE_DC_PDU:
 #endif /* CONFIG_BT_CONN */
 
@@ -820,10 +866,11 @@ void ll_rx_mem_release(void **node_rx)
 #endif /* CONFIG_BT_OBSERVER */
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
-			/* fallthrough */
+			__fallthrough;
 		case NODE_RX_TYPE_EXT_1M_REPORT:
 		case NODE_RX_TYPE_EXT_2M_REPORT:
 		case NODE_RX_TYPE_EXT_CODED_REPORT:
+		case NODE_RX_TYPE_EXT_ADV_TERMINATE:
 #endif /* CONFIG_BT_CTLR_ADV_EXT */
 
 #if defined(CONFIG_BT_CTLR_SCAN_REQ_NOTIFY)
@@ -1086,7 +1133,7 @@ int ull_disable(void *lll)
 	hdr->disabled_param = &sem;
 	hdr->disabled_cb = disabled_cb;
 
-	if (!hdr->ref) {
+	if (!ull_ref_get(hdr)) {
 		return ULL_STATUS_SUCCESS;
 	}
 
@@ -1479,24 +1526,14 @@ static inline void rx_demux_conn_tx_ack(uint8_t ack_last, uint16_t handle,
 #if !defined(CONFIG_BT_CTLR_LOW_LAT_ULL)
 	do {
 #endif /* CONFIG_BT_CTLR_LOW_LAT_ULL */
-		struct ll_conn *conn;
-
 		/* Dequeue node */
 		ull_conn_ack_dequeue();
 
 		/* Process Tx ack */
-		conn = ull_conn_tx_ack(handle, link, node_tx);
+		ull_conn_tx_ack(handle, link, node_tx);
 
 		/* Release link mem */
 		ull_conn_link_tx_release(link);
-
-		/* De-mux 1 tx node from FIFO */
-		ull_conn_tx_demux(1);
-
-		/* Enqueue towards LLL */
-		if (conn) {
-			ull_conn_tx_lll_enqueue(conn, 1);
-		}
 
 		/* check for more rx ack */
 		link = ull_conn_ack_by_last_peek(ack_last, &handle, &node_tx);
@@ -1741,6 +1778,12 @@ static inline void rx_demux_event_done(memq_link_t *link,
 		break;
 #endif /* CONFIG_BT_CONN */
 
+#if defined(CONFIG_BT_CTLR_ADV_EXT) && defined(CONFIG_BT_BROADCASTER)
+	case EVENT_DONE_EXTRA_TYPE_ADV:
+		ull_adv_done(done);
+		break;
+#endif /* CONFIG_BT_CTLR_ADV_EXT && CONFIG_BT_BROADCASTER */
+
 #if defined(CONFIG_BT_OBSERVER)
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
 		/* fallthrough checkpatch workaround! */
@@ -1804,11 +1847,11 @@ static inline void rx_demux_event_done(memq_link_t *link,
 	}
 
 	/* Decrement prepare reference */
-	LL_ASSERT(ull_hdr->ref);
+	LL_ASSERT(ull_ref_get(ull_hdr));
 	ull_ref_dec(ull_hdr);
 
 	/* If disable initiated, signal the semaphore */
-	if (!ull_hdr->ref && ull_hdr->disabled_cb) {
+	if (!ull_ref_get(ull_hdr) && ull_hdr->disabled_cb) {
 		ull_hdr->disabled_cb(ull_hdr->disabled_param);
 	}
 }

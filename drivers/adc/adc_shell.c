@@ -118,7 +118,7 @@ static int get_adc_from_list(char *name)
 static int cmd_adc_channel(const struct shell *shell, size_t argc, char **argv)
 {
 	int retval = 0;
-	struct device *adc_dev;
+	const struct device *adc_dev;
 	int chosen_adc;
 
 	if (argc != args_no.channel) {
@@ -138,7 +138,7 @@ static int cmd_adc_channel(const struct shell *shell, size_t argc, char **argv)
 		shell_error(shell, "ADC device not found");
 		return -ENODEV;
 	}
-	if (!isdigit(argv[args_indx.conf][0])) {
+	if (!isdigit((unsigned char)argv[args_indx.conf][0])) {
 		shell_error(shell, "<channel> must be digits");
 		return -EINVAL;
 	}
@@ -175,7 +175,7 @@ static const struct gain_string_to_enum gain_list[] = {
 static int cmd_adc_gain(const struct shell *shell, size_t argc, char **argv)
 {
 	int retval = -EINVAL;
-	struct device *adc_dev;
+	const struct device *adc_dev;
 	int chosen_adc;
 	int i;
 
@@ -207,7 +207,7 @@ static int cmd_adc_gain(const struct shell *shell, size_t argc, char **argv)
 static int cmd_adc_acq(const struct shell *shell, size_t argc, char **argv)
 {
 	int retval = 0;
-	struct device *adc_dev;
+	const struct device *adc_dev;
 	int chosen_adc;
 	uint16_t acq_time;
 
@@ -229,7 +229,7 @@ static int cmd_adc_acq(const struct shell *shell, size_t argc, char **argv)
 		return -ENODEV;
 	}
 
-	if (!isdigit(argv[args_indx.conf][0])) {
+	if (!isdigit((unsigned char)argv[args_indx.conf][0])) {
 		shell_error(shell, "<time> must be digits");
 		return -EINVAL;
 	}
@@ -255,7 +255,7 @@ static int cmd_adc_acq(const struct shell *shell, size_t argc, char **argv)
 static int cmd_adc_reso(const struct shell *shell, size_t argc, char **argv)
 {
 	int retval = 0;
-	struct device *adc_dev;
+	const struct device *adc_dev;
 	int chosen_adc;
 
 	if (argc != args_no.resolution ||
@@ -276,7 +276,7 @@ static int cmd_adc_reso(const struct shell *shell, size_t argc, char **argv)
 		shell_error(shell, "ADC device not found");
 		return -ENODEV;
 	}
-	if (!isdigit(argv[args_indx.conf][0])) {
+	if (!isdigit((unsigned char)argv[args_indx.conf][0])) {
 		shell_error(shell, "<resolution> must be digits");
 		return -EINVAL;
 	}
@@ -305,7 +305,7 @@ static const struct reference_string_to_enum reference_list[] = {
 static int cmd_adc_ref(const struct shell *shell, size_t argc, char **argv)
 {
 	int retval = -EINVAL;
-	struct device *adc_dev;
+	const struct device *adc_dev;
 	int chosen_adc;
 	int i;
 
@@ -339,7 +339,7 @@ static int cmd_adc_read(const struct shell *shell, size_t argc, char **argv)
 {
 	int retval = 0;
 	int chosen_adc = -1;
-	struct device *adc_dev;
+	const struct device *adc_dev;
 	uint16_t m_sample_buffer[BUFFER_SIZE];
 
 	if (argc != args_no.read) {

@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(net_test, CONFIG_NET_IPV6_LOG_LEVEL);
 #include <device.h>
 #include <init.h>
 #include <linker/sections.h>
+#include <random/rand32.h>
 
 #include <ztest.h>
 
@@ -104,18 +105,18 @@ struct net_test_context {
 	struct net_linkaddr ll_addr;
 };
 
-int net_test_init(struct device *dev)
+int net_test_init(const struct device *dev)
 {
-	struct net_test_context *net_test_context = dev->driver_data;
+	struct net_test_context *net_test_context = dev->data;
 
 	net_test_context = net_test_context;
 
 	return 0;
 }
 
-static uint8_t *net_test_get_mac(struct device *dev)
+static uint8_t *net_test_get_mac(const struct device *dev)
 {
-	struct net_test_context *context = dev->driver_data;
+	struct net_test_context *context = dev->data;
 
 	if (context->mac_addr[2] == 0x00) {
 		/* 00-00-5E-00-53-xx Documentation RFC 7042 */
@@ -137,7 +138,7 @@ static void net_test_iface_init(struct net_if *iface)
 	net_if_set_link_addr(iface, mac, 6, NET_LINK_ETHERNET);
 }
 
-static int tester_send(struct device *dev, struct net_pkt *pkt)
+static int tester_send(const struct device *dev, struct net_pkt *pkt)
 {
 	return 0;
 }

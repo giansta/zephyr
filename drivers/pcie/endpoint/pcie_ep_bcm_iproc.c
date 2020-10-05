@@ -21,10 +21,10 @@ LOG_MODULE_REGISTER(iproc_pcie);
 #define sys_read64(addr)    (((uint64_t)(sys_read32(addr + 4)) << 32) | \
 			     sys_read32(addr))
 
-static int iproc_pcie_conf_read(struct device *dev, uint32_t offset,
+static int iproc_pcie_conf_read(const struct device *dev, uint32_t offset,
 				uint32_t *data)
 {
-	const struct iproc_pcie_ep_config *cfg = dev->config_info;
+	const struct iproc_pcie_ep_config *cfg = dev->config;
 
 	/* Write offset to Configuration Indirect Address register */
 	pcie_write32(offset, &cfg->base->paxb_config_ind_addr);
@@ -35,10 +35,10 @@ static int iproc_pcie_conf_read(struct device *dev, uint32_t offset,
 	return 0;
 }
 
-static void iproc_pcie_conf_write(struct device *dev, uint32_t offset,
+static void iproc_pcie_conf_write(const struct device *dev, uint32_t offset,
 				  uint32_t data)
 {
-	const struct iproc_pcie_ep_config *cfg = dev->config_info;
+	const struct iproc_pcie_ep_config *cfg = dev->config;
 
 	/* Write offset to Configuration Indirect Address register */
 	pcie_write32(offset, &cfg->base->paxb_config_ind_addr);
@@ -47,12 +47,12 @@ static void iproc_pcie_conf_write(struct device *dev, uint32_t offset,
 	pcie_write32(data, &cfg->base->paxb_config_ind_data);
 }
 
-static int iproc_pcie_map_addr(struct device *dev, uint64_t pcie_addr,
+static int iproc_pcie_map_addr(const struct device *dev, uint64_t pcie_addr,
 			       uint64_t *mapped_addr, uint32_t size,
 			       enum pcie_ob_mem_type ob_mem_type)
 {
-	const struct iproc_pcie_ep_config *cfg = dev->config_info;
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	const struct iproc_pcie_ep_config *cfg = dev->config;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 	uint64_t pcie_ob_base, pcie_ob_size, pcie_addr_start, offset;
 	uint32_t mapped_size;
 	enum pcie_outbound_map idx;
@@ -117,9 +117,10 @@ out:
 	return ret;
 }
 
-static void iproc_pcie_unmap_addr(struct device *dev, uint64_t mapped_addr)
+static void iproc_pcie_unmap_addr(const struct device *dev,
+				  uint64_t mapped_addr)
 {
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 	k_spinlock_key_t key;
 
 	key = k_spin_lock(&ctx->ob_map_lock);
@@ -145,7 +146,8 @@ static void iproc_pcie_unmap_addr(struct device *dev, uint64_t mapped_addr)
 	k_spin_unlock(&ctx->ob_map_lock, key);
 }
 
-static int iproc_pcie_generate_msi(struct device *dev, const uint32_t msi_num)
+static int iproc_pcie_generate_msi(const struct device *dev,
+				   const uint32_t msi_num)
 {
 	int ret = 0;
 #ifdef CONFIG_PCIE_EP_BCM_IPROC_V2
@@ -175,14 +177,15 @@ static int iproc_pcie_generate_msi(struct device *dev, const uint32_t msi_num)
 				       PCIE_OB_LOWMEM, DEVICE_TO_HOST);
 
 #else
-	const struct iproc_pcie_ep_config *cfg = dev->config_info;
+	const struct iproc_pcie_ep_config *cfg = dev->config;
 
 	pcie_write32(msi_num, &cfg->base->paxb_pcie_sys_msi_req);
 #endif
 	return ret;
 }
 
-static int iproc_pcie_generate_msix(struct device *dev, const uint32_t msix_num)
+static int iproc_pcie_generate_msix(const struct device *dev,
+				    const uint32_t msix_num)
 {
 	uint64_t addr;
 	uint32_t data, msix_offset;
@@ -211,11 +214,11 @@ static int iproc_pcie_generate_msix(struct device *dev, const uint32_t msix_num)
 	return ret;
 }
 
-static int iproc_pcie_raise_irq(struct device *dev,
+static int iproc_pcie_raise_irq(const struct device *dev,
 				enum pci_ep_irq_type irq_type,
 				uint32_t irq_num)
 {
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 	k_spinlock_key_t key;
 	int ret;
 
@@ -240,11 +243,11 @@ static int iproc_pcie_raise_irq(struct device *dev,
 	return ret;
 }
 
-static int iproc_pcie_register_reset_cb(struct device *dev,
+static int iproc_pcie_register_reset_cb(const struct device *dev,
 					enum pcie_reset reset,
 					pcie_ep_reset_callback_t cb, void *arg)
 {
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 
 	if (reset < PCIE_PERST || reset >= PCIE_RESET_MAX)
 		return -EINVAL;
@@ -257,10 +260,9 @@ static int iproc_pcie_register_reset_cb(struct device *dev,
 }
 
 #if DT_INST_IRQ_HAS_NAME(0, perst)
-static void iproc_pcie_perst(void *arg)
+static void iproc_pcie_perst(const struct device *dev)
 {
-	struct device *dev = arg;
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 	void *reset_data;
 	uint32_t data;
 
@@ -279,10 +281,9 @@ static void iproc_pcie_perst(void *arg)
 #endif
 
 #if DT_INST_IRQ_HAS_NAME(0, perst_inband)
-static void iproc_pcie_hot_reset(void *arg)
+static void iproc_pcie_hot_reset(const struct device *dev)
 {
-	struct device *dev = arg;
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 	void *reset_data;
 	uint32_t data;
 
@@ -301,11 +302,10 @@ static void iproc_pcie_hot_reset(void *arg)
 #endif
 
 #if DT_INST_IRQ_HAS_NAME(0, flr)
-static void iproc_pcie_flr(void *arg)
+static void iproc_pcie_flr(const struct device *dev)
 {
-	struct device *dev = arg;
-	const struct iproc_pcie_ep_config *cfg = dev->config_info;
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	const struct iproc_pcie_ep_config *cfg = dev->config;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 	void *reset_data;
 	uint32_t data;
 
@@ -338,10 +338,10 @@ static void iproc_pcie_flr(void *arg)
 
 DEVICE_DECLARE(iproc_pcie_ep_0);
 
-static void iproc_pcie_reset_config(struct device *dev)
+static void iproc_pcie_reset_config(const struct device *dev)
 {
 	uint32_t data;
-	const struct iproc_pcie_ep_config *cfg = dev->config_info;
+	const struct iproc_pcie_ep_config *cfg = dev->config;
 
 	/* Clear any possible prior pending interrupts */
 	sys_write32(PCIE0_PERST_INTR | PCIE0_PERST_INB_INTR,
@@ -390,7 +390,7 @@ static void iproc_pcie_reset_config(struct device *dev)
 }
 
 #ifdef CONFIG_PCIE_EP_BCM_IPROC_INIT_CFG
-static void iproc_pcie_msix_config(struct device *dev)
+static void iproc_pcie_msix_config(const struct device *dev)
 {
 	/*
 	 * Configure capability of generating 16 messages,
@@ -402,7 +402,7 @@ static void iproc_pcie_msix_config(struct device *dev)
 	iproc_pcie_conf_write(dev, MSIX_PBA_OFF_BIR, MSIX_PBA_B2_10800);
 }
 
-static void iproc_pcie_msi_config(struct device *dev)
+static void iproc_pcie_msi_config(const struct device *dev)
 {
 	uint32_t data;
 
@@ -427,10 +427,10 @@ static int iproc_pcie_mode_check(const struct iproc_pcie_ep_config *cfg)
 	return 0;
 }
 
-static int iproc_pcie_ep_init(struct device *dev)
+static int iproc_pcie_ep_init(const struct device *dev)
 {
-	const struct iproc_pcie_ep_config *cfg = dev->config_info;
-	struct iproc_pcie_ep_ctx *ctx = dev->driver_data;
+	const struct iproc_pcie_ep_config *cfg = dev->config;
+	struct iproc_pcie_ep_ctx *ctx = dev->data;
 	int ret;
 	uint32_t data;
 
