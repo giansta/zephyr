@@ -357,6 +357,24 @@ static int entropy_stm32_rng_init(const struct device *dev)
 	__ASSERT_NO_MSG(dev_cfg != NULL);
 
 #if CONFIG_SOC_SERIES_STM32L4X
+
+#if !defined(CONFIG_CLOCK_STM32_PLL_SRC_MSI) && \
+	!defined(CONFIG_CLOCK_STM32_PLL_SRC_HSI) && \
+	!defined(CONFIG_CLOCK_STM32_PLL_SRC_HSE)
+
+	/* If no PLLSRC clock, use other available 48 MHz clock source */
+#if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_HSI)
+	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_HSI48);
+#elif defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI) && \
+	defined(CONFIG_CLOCK_STM32_MSI_RANGE) && \
+	CONFIG_CLOCK_STM32_MSI_RANGE == 11
+	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_MSI);
+#else
+	/* No 48 MHz source clock available for RNG */
+	return -EINVAL;
+#endif /* defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_HSI) */
+
+#else
 	/* Configure PLLSA11 to enable 48M domain */
 	LL_RCC_PLLSAI1_ConfigDomain_48M(LL_RCC_PLLSOURCE_MSI,
 					LL_RCC_PLLM_DIV_1,
@@ -376,7 +394,9 @@ static int entropy_stm32_rng_init(const struct device *dev)
 	 *  choose PLLSAI1 source as the 48 MHz clock is needed for the RNG
 	 *  Linear Feedback Shift Register
 	 */
-	 LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_PLLSAI1);
+	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_PLLSAI1);
+#endif /* !CONFIG_CLOCK_STM32_PLL_SRC_MSI) && !_HSI && _HSE */
+
 #elif defined(RCC_CR2_HSI48ON) || defined(RCC_CR_HSI48ON) \
 	|| defined(RCC_CRRCR_HSI48ON)
 
