@@ -365,13 +365,10 @@ static int entropy_stm32_rng_init(const struct device *dev)
 	/* If no PLLSRC clock, use other available 48 MHz clock source */
 #if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_HSI)
 	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_HSI48);
-#elif defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI) && \
-	defined(CONFIG_CLOCK_STM32_MSI_RANGE) && \
-	CONFIG_CLOCK_STM32_MSI_RANGE == 11
+#elif defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI)
 	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_MSI);
 #else
-	/* No 48 MHz source clock available for RNG */
-	return -EINVAL;
+#error "No source clock available for RNG"
 #endif /* defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_HSI) */
 
 #else
