@@ -42,6 +42,10 @@ typedef uint32_t printk_val_t;
  */
 #define DIGITS_BUFLEN (11 * (sizeof(printk_val_t) / 4) - 1)
 
+#ifdef CONFIG_PRINTK_SYNC
+static struct k_spinlock lock;
+#endif
+
 #ifdef CONFIG_PRINTK
 /**
  * @brief Default character output routine that does nothing
@@ -193,7 +197,7 @@ void z_vprintk(out_func_t out, void *ctx, const char *fmt, va_list ap)
 					padding = PAD_ZERO_BEFORE;
 					goto still_might_format;
 				}
-				/* Fall through */
+				__fallthrough;
 			case '1':
 			case '2':
 			case '3':
@@ -202,7 +206,6 @@ void z_vprintk(out_func_t out, void *ctx, const char *fmt, va_list ap)
 			case '6':
 			case '7':
 			case '8':
-				/* Fall through */
 			case '9':
 				if (min_width < 0) {
 					min_width = *fmt - '0';
@@ -244,6 +247,8 @@ void z_vprintk(out_func_t out, void *ctx, const char *fmt, va_list ap)
 						break;
 					}
 					d = (printk_val_t) lld;
+				} else if (*fmt == 'u') {
+					d = va_arg(ap, unsigned int);
 				} else {
 					d = va_arg(ap, int);
 				}
@@ -261,12 +266,8 @@ void z_vprintk(out_func_t out, void *ctx, const char *fmt, va_list ap)
 				out('x', ctx);
 				/* left-pad pointers with zeros */
 				padding = PAD_ZERO_BEFORE;
-				if (sizeof(printk_val_t) > 4) {
-					min_width = 16;
-				} else {
-					min_width = 8;
-				}
-				/* Fall through */
+				min_width = sizeof(void *) * 2;
+				__fallthrough;
 			case 'x':
 			case 'X': {
 				printk_val_t x;
@@ -375,26 +376,47 @@ void vprintk(const char *fmt, va_list ap)
 		}
 	} else {
 		struct out_context ctx = { 0 };
+#ifdef CONFIG_PRINTK_SYNC
+		k_spinlock_key_t key = k_spin_lock(&lock);
+#endif
 
 		z_vprintk(char_out, &ctx, fmt, ap);
+
+#ifdef CONFIG_PRINTK_SYNC
+		k_spin_unlock(&lock, key);
+#endif
 	}
 }
 #else
 void vprintk(const char *fmt, va_list ap)
 {
 	struct out_context ctx = { 0 };
+#ifdef CONFIG_PRINTK_SYNC
+	k_spinlock_key_t key = k_spin_lock(&lock);
+#endif
 
 	z_vprintk(char_out, &ctx, fmt, ap);
+
+#ifdef CONFIG_PRINTK_SYNC
+	k_spin_unlock(&lock, key);
+#endif
 }
 #endif /* CONFIG_USERSPACE */
 
 void z_impl_k_str_out(char *c, size_t n)
 {
 	size_t i;
+#ifdef CONFIG_PRINTK_SYNC
+	k_spinlock_key_t key = k_spin_lock(&lock);
+#endif
 
 	for (i = 0; i < n; i++) {
 		_char_out(c[i]);
 	}
+
+#ifdef CONFIG_PRINTK_SYNC
+	k_spin_unlock(&lock, key);
+#endif
 }
 
 #ifdef CONFIG_USERSPACE

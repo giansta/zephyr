@@ -15,10 +15,8 @@
 #include <kernel_structs.h>
 #include <debug/object_tracing_common.h>
 #include <toolchain.h>
-#include <linker/sections.h>
 #include <wait_q.h>
 #include <ksched.h>
-#include <sys/sflist.h>
 #include <init.h>
 #include <syscall_handler.h>
 #include <kernel_internal.h>
@@ -64,7 +62,7 @@ struct k_queue *_trace_list_k_queue;
 /*
  * Complete initialization of statically defined queues.
  */
-static int init_queue_module(struct device *dev)
+static int init_queue_module(const struct device *dev)
 {
 	ARG_UNUSED(dev);
 

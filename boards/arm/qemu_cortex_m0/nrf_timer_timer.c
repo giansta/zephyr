@@ -160,18 +160,9 @@ void timer0_nrf_isr(void *arg)
 	z_clock_announce(IS_ENABLED(CONFIG_TICKLESS_KERNEL) ? dticks : (dticks > 0));
 }
 
-int z_clock_driver_init(struct device *device)
+int z_clock_driver_init(const struct device *device)
 {
-	struct device *clock;
-
 	ARG_UNUSED(device);
-
-	clock = device_get_binding(DT_LABEL(DT_INST(0, nordic_nrf_clock)));
-	if (!clock) {
-		return -1;
-	}
-
-	clock_control_on(clock, CLOCK_CONTROL_NRF_SUBSYS_HF);
 
 	/* FIXME switch to 1 MHz once this is fixed in QEMU */
 	nrf_timer_frequency_set(TIMER, NRF_TIMER_FREQ_2MHz);

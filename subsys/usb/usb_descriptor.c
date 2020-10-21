@@ -484,8 +484,8 @@ struct usb_dev_data *usb_get_dev_data_by_cfg(sys_slist_t *list,
 	struct usb_dev_data *dev_data;
 
 	SYS_SLIST_FOR_EACH_CONTAINER(list, dev_data, node) {
-		struct device *dev = dev_data->dev;
-		const struct usb_cfg_data *cfg_cur = dev->config_info;
+		const struct device *dev = dev_data->dev;
+		const struct usb_cfg_data *cfg_cur = dev->config;
 
 		if (cfg_cur == cfg) {
 			return dev_data;
@@ -503,8 +503,8 @@ struct usb_dev_data *usb_get_dev_data_by_iface(sys_slist_t *list,
 	struct usb_dev_data *dev_data;
 
 	SYS_SLIST_FOR_EACH_CONTAINER(list, dev_data, node) {
-		struct device *dev = dev_data->dev;
-		const struct usb_cfg_data *cfg = dev->config_info;
+		const struct device *dev = dev_data->dev;
+		const struct usb_cfg_data *cfg = dev->config;
 		const struct usb_if_descriptor *if_desc =
 						cfg->interface_descriptor;
 
@@ -523,8 +523,8 @@ struct usb_dev_data *usb_get_dev_data_by_ep(sys_slist_t *list, uint8_t ep)
 	struct usb_dev_data *dev_data;
 
 	SYS_SLIST_FOR_EACH_CONTAINER(list, dev_data, node) {
-		struct device *dev = dev_data->dev;
-		const struct usb_cfg_data *cfg = dev->config_info;
+		const struct device *dev = dev_data->dev;
+		const struct usb_cfg_data *cfg = dev->config;
 		const struct usb_ep_cfg_data *ep_data = cfg->endpoint;
 
 		for (uint8_t i = 0; i < cfg->num_endpoints; i++) {

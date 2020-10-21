@@ -5,6 +5,7 @@
  */
 
 #include <zephyr.h>
+#include <soc.h>
 #include <bluetooth/hci.h>
 #include <sys/byteorder.h>
 
@@ -12,6 +13,7 @@
 #include "util/memq.h"
 #include "util/mayfly.h"
 
+#include "hal/cpu.h"
 #include "hal/ccm.h"
 #include "hal/radio.h"
 #include "hal/ticker.h"
@@ -41,7 +43,6 @@
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
 #define LOG_MODULE_NAME bt_ctlr_ull_slave
 #include "common/log.h"
-#include <soc.h>
 #include "hal/debug.h"
 
 static void ticker_op_stop_adv_cb(uint32_t status, void *param);
@@ -67,8 +68,6 @@ void ull_slave_setup(memq_link_t *link, struct node_rx_hdr *rx,
 	uint16_t interval;
 	uint8_t chan_sel;
 
-	((struct lll_adv *)ftr->param)->conn = NULL;
-
 	adv = ((struct lll_adv *)ftr->param)->hdr.parent;
 	conn = lll->hdr.parent;
 
@@ -87,6 +86,9 @@ void ull_slave_setup(memq_link_t *link, struct node_rx_hdr *rx,
 	if ((lll->data_chan_hop < 5) || (lll->data_chan_hop > 16)) {
 		return;
 	}
+
+	((struct lll_adv *)ftr->param)->conn = NULL;
+
 	interval = sys_le16_to_cpu(pdu_adv->connect_ind.interval);
 	lll->interval = interval;
 	lll->latency = sys_le16_to_cpu(pdu_adv->connect_ind.latency);
@@ -213,6 +215,25 @@ void ull_slave_setup(memq_link_t *link, struct node_rx_hdr *rx,
 			cs->csa = 0x00;
 		}
 	}
+
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+	if (ll_adv_cmds_is_ext()) {
+		/* Enqueue connection or CSA event */
+		ll_rx_put(link, rx);
+
+		/* use reserved link and node_rx to prepare
+		 * advertising terminate event
+		 */
+		rx = adv->lll.node_rx_adv_term;
+		link = rx->link;
+
+		rx->handle = ull_adv_handle_get(adv);
+		rx->type = NODE_RX_TYPE_EXT_ADV_TERMINATE;
+		rx->rx_ftr.param_adv_term.status = 0U;
+		rx->rx_ftr.param_adv_term.conn_handle = lll->handle;
+		rx->rx_ftr.param_adv_term.num_events = 0U;
+	}
+#endif
 
 	ll_rx_put(link, rx);
 	ll_rx_sched();
@@ -348,17 +369,26 @@ void ull_slave_done(struct node_rx_event_done *done, uint32_t *ticks_drift_plus,
 	}
 }
 
-void ull_slave_ticker_cb(uint32_t ticks_at_expire, uint32_t remainder, uint16_t lazy,
-			 void *param)
+void ull_slave_ticker_cb(uint32_t ticks_at_expire, uint32_t remainder,
+			 uint16_t lazy, void *param)
 {
 	static memq_link_t link;
 	static struct mayfly mfy = {0, 0, &link, NULL, lll_slave_prepare};
 	static struct lll_prepare_param p;
-	struct ll_conn *conn = param;
+	struct ll_conn *conn;
 	uint32_t err;
 	uint8_t ref;
 
 	DEBUG_RADIO_PREPARE_S(1);
+
+	conn = param;
+
+	/* Check if stopping ticker (on disconnection, race with ticker expiry)
+	 */
+	if (unlikely(conn->lll.handle == 0xFFFF)) {
+		DEBUG_RADIO_PREPARE_S(0);
+		return;
+	}
 
 	/* If this is a must-expire callback, LLCP state machine does not need
 	 * to know. Will be called with lazy > 0 when scheduled in air.
@@ -370,6 +400,7 @@ void ull_slave_ticker_cb(uint32_t ticks_at_expire, uint32_t remainder, uint16_t 
 		/* Handle any LL Control Procedures */
 		ret = ull_conn_llcp(conn, ticks_at_expire, lazy);
 		if (ret) {
+			DEBUG_RADIO_PREPARE_S(0);
 			return;
 		}
 	}

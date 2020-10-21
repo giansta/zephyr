@@ -24,6 +24,7 @@
 #define ZEPHYR_INCLUDE_NET_LWM2M_H_
 
 #include <kernel.h>
+#include <sys/mutex.h>
 #include <net/coap.h>
 
 /**
@@ -49,13 +50,18 @@
  * http://www.openmobilealliance.org/wp/OMNA/LwM2M/LwM2MRegistry.html
  */
 
-#define IPSO_OBJECT_TEMP_SENSOR_ID			3303
-#define IPSO_OBJECT_LIGHT_CONTROL_ID			3311
-#define IPSO_OBJECT_ACCELEROMETER_ID			3313
-#define IPSO_OBJECT_BUZZER_ID				3338
-#define IPSO_OBJECT_TIMER_ID				3340
-#define IPSO_OBJECT_ONOFF_SWITCH_ID			3342
-#define IPSO_OBJECT_PUSH_BUTTON_ID			3347
+/* clang-format off */
+#define IPSO_OBJECT_GENERIC_SENSOR_ID       3300
+#define IPSO_OBJECT_TEMP_SENSOR_ID          3303
+#define IPSO_OBJECT_HUMIDITY_SENSOR_ID      3304
+#define IPSO_OBJECT_LIGHT_CONTROL_ID        3311
+#define IPSO_OBJECT_ACCELEROMETER_ID        3313
+#define IPSO_OBJECT_PRESSURE_ID             3323
+#define IPSO_OBJECT_BUZZER_ID               3338
+#define IPSO_OBJECT_TIMER_ID                3340
+#define IPSO_OBJECT_ONOFF_SWITCH_ID         3342
+#define IPSO_OBJECT_PUSH_BUTTON_ID          3347
+/* clang-format on */
 
 /**
  * @brief LwM2M context structure to maintain information for a single
@@ -69,6 +75,7 @@ struct lwm2m_ctx {
 	struct coap_pending pendings[CONFIG_LWM2M_ENGINE_MAX_PENDING];
 	struct coap_reply replies[CONFIG_LWM2M_ENGINE_MAX_REPLIES];
 	struct k_delayed_work retransmit_work;
+	struct sys_mutex send_lock;
 
 #if defined(CONFIG_LWM2M_DTLS_SUPPORT)
 	/** TLS tag is set by client as a reference used when the
@@ -90,6 +97,9 @@ struct lwm2m_ctx {
 
 	/** Current index of Security Object used for server credentials */
 	int sec_obj_inst;
+
+	/** Current index of Server Object used in this context. */
+	int srv_obj_inst;
 
 	/** Flag to enable BOOTSTRAP interface.  See Section 5.2
 	 *  "Bootstrap Interface" of LwM2M Technical Specification 1.0.2
@@ -129,7 +139,8 @@ struct lwm2m_ctx {
  * @return Callback returns a pointer to the data buffer or NULL for failure.
  */
 typedef void *(*lwm2m_engine_get_data_cb_t)(uint16_t obj_inst_id,
-					    uint16_t res_id, uint16_t res_inst_id,
+					    uint16_t res_id,
+					    uint16_t res_inst_id,
 					    size_t *data_len);
 
 /**
@@ -779,8 +790,8 @@ int lwm2m_engine_set_res_data(char *pathstr, void *data_ptr, uint16_t data_len,
  *
  * @return 0 for success or negative in case of error.
  */
-int lwm2m_engine_get_res_data(char *pathstr, void **data_ptr, uint16_t *data_len,
-			      uint8_t *data_flags);
+int lwm2m_engine_get_res_data(char *pathstr, void **data_ptr,
+			      uint16_t *data_len, uint8_t *data_flags);
 
 /**
  * @brief Create a resource instance

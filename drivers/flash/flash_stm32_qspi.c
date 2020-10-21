@@ -25,7 +25,7 @@ LOG_MODULE_REGISTER(flash_stm32_qspi, CONFIG_FLASH_LOG_LEVEL);
 #define STM32_QSPI_FLASH_SIZE_MIN         2
 #define STM32_QSPI_CLOCK_PRESCALER_MAX  255
 
-typedef void (*irq_config_func_t)(struct device *dev);
+typedef void (*irq_config_func_t)(const struct device *dev);
 
 /* Data from DT child node containing flash parameters */
 struct spi_nor_flash_config {
@@ -65,18 +65,18 @@ struct flash_stm32_qspi_data {
 
 #define DEV_NAME(dev) ((dev)->name)
 #define DEV_CFG(dev) \
-	(const struct flash_stm32_qspi_config * const)(dev->config_info)
+	(const struct flash_stm32_qspi_config * const)(dev->config)
 #define DEV_DATA(dev) \
-	(struct flash_stm32_qspi_data * const)(dev->driver_data)
+	(struct flash_stm32_qspi_data * const)(dev->data)
 
-static inline void qspi_lock_thread(struct device *dev)
+static inline void qspi_lock_thread(const struct device *dev)
 {
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
 
 	k_sem_take(&dev_data->sem, K_FOREVER);
 }
 
-static inline void qspi_unlock_thread(struct device *dev)
+static inline void qspi_unlock_thread(const struct device *dev)
 {
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
 
@@ -86,7 +86,7 @@ static inline void qspi_unlock_thread(struct device *dev)
 /*
  * Send a command over QSPI bus.
  */
-static int qspi_send_cmd(struct device *dev, QSPI_CommandTypeDef *cmd)
+static int qspi_send_cmd(const struct device *dev, QSPI_CommandTypeDef *cmd)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
@@ -113,7 +113,7 @@ static int qspi_send_cmd(struct device *dev, QSPI_CommandTypeDef *cmd)
 /*
  * Perform a read access over QSPI bus.
  */
-static int qspi_read_access(struct device *dev, QSPI_CommandTypeDef *cmd,
+static int qspi_read_access(const struct device *dev, QSPI_CommandTypeDef *cmd,
 			    uint8_t *data, size_t size)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
@@ -149,7 +149,7 @@ static int qspi_read_access(struct device *dev, QSPI_CommandTypeDef *cmd,
 /*
  * Perform a write access over QSPI bus.
  */
-static int qspi_write_access(struct device *dev, QSPI_CommandTypeDef *cmd,
+static int qspi_write_access(const struct device *dev, QSPI_CommandTypeDef *cmd,
 			     const uint8_t *data, size_t size)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
@@ -185,7 +185,7 @@ static int qspi_write_access(struct device *dev, QSPI_CommandTypeDef *cmd,
 /*
  * Retrieve Flash JEDEC ID and compare it with the one expected
  */
-static int qspi_read_id(struct device *dev)
+static int qspi_read_id(const struct device *dev)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
 	const struct spi_nor_flash_config *flash_cfg = &dev_cfg->flash_config;
@@ -213,7 +213,7 @@ static int qspi_read_id(struct device *dev)
 /*
  * Read Serial Flash Discovery Parameter
  */
-static int qspi_read_sfdp(struct device *dev, off_t addr, uint8_t *data,
+static int qspi_read_sfdp(const struct device *dev, off_t addr, uint8_t *data,
 			  size_t size)
 {
 	QSPI_CommandTypeDef cmd = {
@@ -229,7 +229,7 @@ static int qspi_read_sfdp(struct device *dev, off_t addr, uint8_t *data,
 	return qspi_read_access(dev, &cmd, data, size);
 }
 
-static int qspi_process_jedec_flash_parameter_table(struct device *dev,
+static int qspi_process_jedec_flash_parameter_table(const struct device *dev,
 		off_t addr, unsigned int word_len)
 {
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
@@ -285,7 +285,7 @@ static int qspi_process_jedec_flash_parameter_table(struct device *dev,
 	return ret;
 }
 
-static bool qspi_address_is_valid(struct device *dev, off_t addr, size_t size)
+static bool qspi_address_is_valid(const struct device *dev, off_t addr, size_t size)
 {
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
 	struct flash_params *flash_params = &dev_data->flash_params;
@@ -293,7 +293,7 @@ static bool qspi_address_is_valid(struct device *dev, off_t addr, size_t size)
 	return (addr >= 0) && ((uint64_t)addr + (uint64_t)size <= flash_params->size);
 }
 
-static int flash_stm32_qspi_read(struct device *dev, off_t addr, void *data,
+static int flash_stm32_qspi_read(const struct device *dev, off_t addr, void *data,
 				 size_t size)
 {
 	int ret;
@@ -322,7 +322,7 @@ static int flash_stm32_qspi_read(struct device *dev, off_t addr, void *data,
 	return ret;
 }
 
-static int qspi_wait_until_ready(struct device *dev)
+static int qspi_wait_until_ready(const struct device *dev)
 {
 	uint8_t reg;
 	int ret;
@@ -340,7 +340,7 @@ static int qspi_wait_until_ready(struct device *dev)
 	return ret;
 }
 
-static int flash_stm32_qspi_write(struct device *dev, off_t addr,
+static int flash_stm32_qspi_write(const struct device *dev, off_t addr,
 				  const void *data, size_t size)
 {
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
@@ -411,7 +411,7 @@ static int flash_stm32_qspi_write(struct device *dev, off_t addr,
 	return ret;
 }
 
-static int flash_stm32_qspi_erase(struct device *dev, off_t addr, size_t size)
+static int flash_stm32_qspi_erase(const struct device *dev, off_t addr, size_t size)
 {
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
 	struct flash_params *flash_params = &dev_data->flash_params;
@@ -491,7 +491,7 @@ static int flash_stm32_qspi_erase(struct device *dev, off_t addr, size_t size)
 	return ret;
 }
 
-static int flash_stm32_qspi_write_protection_set(struct device *dev,
+static int flash_stm32_qspi_write_protection_set(const struct device *dev,
 						 bool write_protect)
 {
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
@@ -613,7 +613,7 @@ void HAL_QSPI_TimeOutCallback(QSPI_HandleTypeDef *hqspi)
 }
 
 #if defined(CONFIG_FLASH_PAGE_LAYOUT)
-static void flash_stm32_qspi_pages_layout(struct device *dev,
+static void flash_stm32_qspi_pages_layout(const struct device *dev,
 				const struct flash_pages_layout **layout,
 				size_t *layout_size)
 {
@@ -635,7 +635,7 @@ static const struct flash_driver_api flash_stm32_qspi_driver_api = {
 #endif
 };
 
-static int flash_stm32_qspi_init(struct device *dev)
+static int flash_stm32_qspi_init(const struct device *dev)
 {
 	const struct flash_stm32_qspi_config *dev_cfg = DEV_CFG(dev);
 	struct flash_stm32_qspi_data *dev_data = DEV_DATA(dev);
@@ -736,7 +736,7 @@ static int flash_stm32_qspi_init(struct device *dev)
 	DT_CHILD(DT_DRV_INST(drv_id), qspi_nor_flash_##flash_id)
 
 #define STM32_QSPI_INIT(id)						\
-static void flash_stm32_qspi_irq_config_func_##id(struct device *dev);	\
+static void flash_stm32_qspi_irq_config_func_##id(const struct device *dev);	\
 									\
 static const struct flash_stm32_qspi_config flash_stm32_qspi_cfg_##id = { \
 	.regs = (QUADSPI_TypeDef *)DT_INST_REG_ADDR(id),		\
@@ -771,7 +771,7 @@ DEVICE_AND_API_INIT(flash_stm32_qspi_##id, DT_INST_LABEL(id),		\
 		    POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,	\
 		    &flash_stm32_qspi_driver_api);			\
 									\
-static void flash_stm32_qspi_irq_config_func_##id(struct device *dev)	\
+static void flash_stm32_qspi_irq_config_func_##id(const struct device *dev)	\
 {									\
 	IRQ_CONNECT(DT_INST_IRQN(id), DT_INST_IRQ(id, priority),	\
 		    flash_stm32_qspi_isr,				\

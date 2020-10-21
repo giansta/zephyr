@@ -44,10 +44,10 @@ struct gpio_xec_config {
 	uint32_t flags;
 };
 
-static int gpio_xec_configure(struct device *dev,
+static int gpio_xec_configure(const struct device *dev,
 			      gpio_pin_t pin, gpio_flags_t flags)
 {
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 	__IO uint32_t *current_pcr1;
 	uint32_t pcr1 = 0U;
 	uint32_t mask = 0U;
@@ -126,11 +126,12 @@ static int gpio_xec_configure(struct device *dev,
 	return 0;
 }
 
-static int gpio_xec_pin_interrupt_configure(struct device *dev,
-		gpio_pin_t pin, enum gpio_int_mode mode,
-		enum gpio_int_trig trig)
+static int gpio_xec_pin_interrupt_configure(const struct device *dev,
+					    gpio_pin_t pin,
+					    enum gpio_int_mode mode,
+					    enum gpio_int_trig trig)
 {
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 	__IO uint32_t *current_pcr1;
 	uint32_t pcr1 = 0U;
 	uint32_t mask = 0U;
@@ -203,10 +204,11 @@ static int gpio_xec_pin_interrupt_configure(struct device *dev,
 	return 0;
 }
 
-static int gpio_xec_port_set_masked_raw(struct device *dev, uint32_t mask,
+static int gpio_xec_port_set_masked_raw(const struct device *dev,
+					uint32_t mask,
 					uint32_t value)
 {
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* GPIO output registers are used for writing */
 	__IO uint32_t *gpio_base = GPIO_OUT_BASE(config);
@@ -216,9 +218,9 @@ static int gpio_xec_port_set_masked_raw(struct device *dev, uint32_t mask,
 	return 0;
 }
 
-static int gpio_xec_port_set_bits_raw(struct device *dev, uint32_t mask)
+static int gpio_xec_port_set_bits_raw(const struct device *dev, uint32_t mask)
 {
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* GPIO output registers are used for writing */
 	__IO uint32_t *gpio_base = GPIO_OUT_BASE(config);
@@ -228,9 +230,10 @@ static int gpio_xec_port_set_bits_raw(struct device *dev, uint32_t mask)
 	return 0;
 }
 
-static int gpio_xec_port_clear_bits_raw(struct device *dev, uint32_t mask)
+static int gpio_xec_port_clear_bits_raw(const struct device *dev,
+					uint32_t mask)
 {
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* GPIO output registers are used for writing */
 	__IO uint32_t *gpio_base = GPIO_OUT_BASE(config);
@@ -240,9 +243,9 @@ static int gpio_xec_port_clear_bits_raw(struct device *dev, uint32_t mask)
 	return 0;
 }
 
-static int gpio_xec_port_toggle_bits(struct device *dev, uint32_t mask)
+static int gpio_xec_port_toggle_bits(const struct device *dev, uint32_t mask)
 {
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* GPIO output registers are used for writing */
 	__IO uint32_t *gpio_base = GPIO_OUT_BASE(config);
@@ -252,9 +255,9 @@ static int gpio_xec_port_toggle_bits(struct device *dev, uint32_t mask)
 	return 0;
 }
 
-static int gpio_xec_port_get_raw(struct device *dev, uint32_t *value)
+static int gpio_xec_port_get_raw(const struct device *dev, uint32_t *value)
 {
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* GPIO input registers are used for reading */
 	__IO uint32_t *gpio_base = GPIO_IN_BASE(config);
@@ -264,21 +267,20 @@ static int gpio_xec_port_get_raw(struct device *dev, uint32_t *value)
 	return 0;
 }
 
-static int gpio_xec_manage_callback(struct device *dev,
+static int gpio_xec_manage_callback(const struct device *dev,
 				    struct gpio_callback *callback, bool set)
 {
-	struct gpio_xec_data *data = dev->driver_data;
+	struct gpio_xec_data *data = dev->data;
 
 	gpio_manage_callback(&data->callbacks, callback, set);
 
 	return 0;
 }
 
-static void gpio_gpio_xec_port_isr(void *arg)
+static void gpio_gpio_xec_port_isr(const struct device *dev)
 {
-	struct device *dev = (struct device *)arg;
-	const struct gpio_xec_config *config = dev->config_info;
-	struct gpio_xec_data *data = dev->driver_data;
+	const struct gpio_xec_config *config = dev->config;
+	struct gpio_xec_data *data = dev->data;
 	uint32_t girq_result;
 
 	/* Figure out which interrupts have been triggered from the EC
@@ -304,7 +306,7 @@ static const struct gpio_driver_api gpio_xec_driver_api = {
 };
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_000_036), okay)
-static int gpio_xec_port000_036_init(struct device *dev);
+static int gpio_xec_port000_036_init(const struct device *dev);
 
 static const struct gpio_xec_config gpio_xec_port000_036_config = {
 	.common = {
@@ -330,10 +332,10 @@ DEVICE_AND_API_INIT(gpio_xec_port000_036,
 		POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&gpio_xec_driver_api);
 
-static int gpio_xec_port000_036_init(struct device *dev)
+static int gpio_xec_port000_036_init(const struct device *dev)
 {
 #if DT_IRQ_HAS_CELL(DT_NODELABEL(gpio_000_036), irq)
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* Turn on the block enable in the EC aggregator */
 	MCHP_GIRQ_BLK_SETEN(config->girq_id);
@@ -349,7 +351,7 @@ static int gpio_xec_port000_036_init(struct device *dev)
 #endif /* DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_000_036), okay) */
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_040_076), okay)
-static int gpio_xec_port040_076_init(struct device *dev);
+static int gpio_xec_port040_076_init(const struct device *dev);
 
 static const struct gpio_xec_config gpio_xec_port040_076_config = {
 	.common = {
@@ -375,10 +377,10 @@ DEVICE_AND_API_INIT(gpio_xec_port040_076,
 		POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&gpio_xec_driver_api);
 
-static int gpio_xec_port040_076_init(struct device *dev)
+static int gpio_xec_port040_076_init(const struct device *dev)
 {
 #if DT_IRQ_HAS_CELL(DT_NODELABEL(gpio_040_076), irq)
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* Turn on the block enable in the EC aggregator */
 	MCHP_GIRQ_BLK_SETEN(config->girq_id);
@@ -394,7 +396,7 @@ static int gpio_xec_port040_076_init(struct device *dev)
 #endif /* DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_040_076), okay) */
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_100_136), okay)
-static int gpio_xec_port100_136_init(struct device *dev);
+static int gpio_xec_port100_136_init(const struct device *dev);
 
 static const struct gpio_xec_config gpio_xec_port100_136_config = {
 	.common = {
@@ -420,10 +422,10 @@ DEVICE_AND_API_INIT(gpio_xec_port100_136,
 		POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&gpio_xec_driver_api);
 
-static int gpio_xec_port100_136_init(struct device *dev)
+static int gpio_xec_port100_136_init(const struct device *dev)
 {
 #if DT_IRQ_HAS_CELL(DT_NODELABEL(gpio_100_136), irq)
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* Turn on the block enable in the EC aggregator */
 	MCHP_GIRQ_BLK_SETEN(config->girq_id);
@@ -439,7 +441,7 @@ static int gpio_xec_port100_136_init(struct device *dev)
 #endif /* DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_100_136), okay) */
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_140_176), okay)
-static int gpio_xec_port140_176_init(struct device *dev);
+static int gpio_xec_port140_176_init(const struct device *dev);
 
 static const struct gpio_xec_config gpio_xec_port140_176_config = {
 	.common = {
@@ -465,10 +467,10 @@ DEVICE_AND_API_INIT(gpio_xec_port140_176,
 		POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&gpio_xec_driver_api);
 
-static int gpio_xec_port140_176_init(struct device *dev)
+static int gpio_xec_port140_176_init(const struct device *dev)
 {
 #if DT_IRQ_HAS_CELL(DT_NODELABEL(gpio_140_176), irq)
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* Turn on the block enable in the EC aggregator */
 	MCHP_GIRQ_BLK_SETEN(config->girq_id);
@@ -484,7 +486,7 @@ static int gpio_xec_port140_176_init(struct device *dev)
 #endif /* DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_140_176), okay) */
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_200_236), okay)
-static int gpio_xec_port200_236_init(struct device *dev);
+static int gpio_xec_port200_236_init(const struct device *dev);
 
 static const struct gpio_xec_config gpio_xec_port200_236_config = {
 	.common = {
@@ -510,10 +512,10 @@ DEVICE_AND_API_INIT(gpio_xec_port200_236,
 		POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&gpio_xec_driver_api);
 
-static int gpio_xec_port200_236_init(struct device *dev)
+static int gpio_xec_port200_236_init(const struct device *dev)
 {
 #if DT_IRQ_HAS_CELL(DT_NODELABEL(gpio_200_236), irq)
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* Turn on the block enable in the EC aggregator */
 	MCHP_GIRQ_BLK_SETEN(config->girq_id);
@@ -529,7 +531,7 @@ static int gpio_xec_port200_236_init(struct device *dev)
 #endif /* DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_200_236), okay) */
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_240_276), okay)
-static int gpio_xec_port240_276_init(struct device *dev);
+static int gpio_xec_port240_276_init(const struct device *dev);
 
 static const struct gpio_xec_config gpio_xec_port240_276_config = {
 	.common = {
@@ -555,10 +557,10 @@ DEVICE_AND_API_INIT(gpio_xec_port240_276,
 		POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
 		&gpio_xec_driver_api);
 
-static int gpio_xec_port240_276_init(struct device *dev)
+static int gpio_xec_port240_276_init(const struct device *dev)
 {
 #if DT_IRQ_HAS_CELL(DT_NODELABEL(gpio_240_276), irq)
-	const struct gpio_xec_config *config = dev->config_info;
+	const struct gpio_xec_config *config = dev->config;
 
 	/* Turn on the block enable in the EC aggregator */
 	MCHP_GIRQ_BLK_SETEN(config->girq_id);

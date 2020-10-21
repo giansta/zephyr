@@ -42,8 +42,7 @@ static const struct pin_config pinconf[] = {
 #ifdef CONFIG_SPI_STM32_USE_HW_SS
 	{STM32_PIN_PA4, STM32L4X_PINMUX_FUNC_PA4_SPI1_NSS},
 #endif /* CONFIG_SPI_STM32_USE_HW_SS */
-	/* SPI1_SCK should output on PA5, but is used for LD2 */
-	{STM32_PIN_PB3, STM32L4X_PINMUX_FUNC_PB3_SPI1_SCK},
+	{STM32_PIN_PA5, STM32L4X_PINMUX_FUNC_PA5_SPI1_SCK},
 	{STM32_PIN_PA6, STM32L4X_PINMUX_FUNC_PA6_SPI1_MISO},
 	{STM32_PIN_PA7, STM32L4X_PINMUX_FUNC_PA7_SPI1_MOSI},
 #endif
@@ -70,9 +69,12 @@ static const struct pin_config pinconf[] = {
 	{STM32_PIN_PA11, STM32L4X_PINMUX_FUNC_PA11_OTG_FS_DM},
 	{STM32_PIN_PA12, STM32L4X_PINMUX_FUNC_PA12_OTG_FS_DP},
 #endif	/* CONFIG_USB_DC_STM32 */
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(adc1), okay) && CONFIG_ADC
+	{STM32_PIN_PC0, STM32L4X_PINMUX_FUNC_PC0_ADC123_IN1},
+#endif
 };
 
-static int pinmux_stm32_init(struct device *port)
+static int pinmux_stm32_init(const struct device *port)
 {
 	ARG_UNUSED(port);
 

@@ -13,6 +13,12 @@ K_SEM_DEFINE(rx_buf_released, 0, 1);
 K_SEM_DEFINE(rx_disabled, 0, 1);
 
 ZTEST_BMEM volatile bool failed_in_isr;
+static const struct device *uart_dev;
+
+void init_test(void)
+{
+	uart_dev = device_get_binding(UART_DEVICE_NAME);
+}
 
 ZTEST_BMEM volatile size_t sent;
 ZTEST_BMEM volatile size_t received;
@@ -20,16 +26,17 @@ ZTEST_BMEM volatile size_t received;
 #ifdef CONFIG_USERSPACE
 void set_permissions(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	k_thread_access_grant(k_current_get(), &tx_done, &tx_aborted,
 			      &rx_rdy, &rx_buf_released, &rx_disabled,
 			      uart_dev);
 }
 #endif
 
-void test_single_read_callback(struct uart_event *evt, void *user_data)
+void test_single_read_callback(const struct device *dev,
+			       struct uart_event *evt, void *user_data)
 {
+	ARG_UNUSED(dev);
+
 	switch (evt->type) {
 	case UART_TX_DONE:
 		sent = evt->data.tx.len;
@@ -62,8 +69,6 @@ ZTEST_BMEM volatile uint32_t tx_aborted_count;
 
 void test_single_read_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	uart_callback_set(uart_dev,
 			  test_single_read_callback,
 			  (void *) &tx_aborted_count);
@@ -71,7 +76,7 @@ void test_single_read_setup(void)
 
 void test_single_read(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
+	const struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
 
 	uint8_t rx_buf[10] = {0};
 	uint8_t tx_buf[5] = "test";
@@ -110,10 +115,9 @@ ZTEST_DMEM uint8_t buf_num = 1U;
 ZTEST_BMEM uint8_t *read_ptr;
 ZTEST_BMEM volatile size_t read_len;
 
-void test_chained_read_callback(struct uart_event *evt, void *user_data)
+void test_chained_read_callback(const struct device *uart_dev,
+				struct uart_event *evt, void *user_data)
 {
-	struct device *uart_dev = (struct device *) user_data;
-
 	switch (evt->type) {
 	case UART_TX_DONE:
 		k_sem_give(&tx_done);
@@ -163,14 +167,11 @@ void test_chained_read_callback(struct uart_event *evt, void *user_data)
 
 void test_chained_read_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
-	uart_callback_set(uart_dev, test_chained_read_callback, uart_dev);
+	uart_callback_set(uart_dev, test_chained_read_callback, NULL);
 }
 
 void test_chained_read(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
 	uint8_t tx_buf[10];
 
 	uart_rx_enable(uart_dev, chained_read_buf0, 10, 50);
@@ -205,10 +206,9 @@ void test_chained_read(void)
 ZTEST_BMEM uint8_t double_buffer[2][12];
 ZTEST_DMEM uint8_t *next_buf = double_buffer[1];
 
-void test_double_buffer_callback(struct uart_event *evt, void *user_data)
+void test_double_buffer_callback(const struct device *uart_dev,
+				 struct uart_event *evt, void *user_data)
 {
-	struct device *uart_dev = (struct device *) user_data;
-
 	switch (evt->type) {
 	case UART_TX_DONE:
 		sent = evt->data.tx.len;
@@ -247,14 +247,11 @@ void test_double_buffer_callback(struct uart_event *evt, void *user_data)
 
 void test_double_buffer_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
-	uart_callback_set(uart_dev, test_double_buffer_callback, uart_dev);
+	uart_callback_set(uart_dev, test_double_buffer_callback, NULL);
 }
 
 void test_double_buffer(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
 	uint8_t tx_buf[4];
 
 	zassert_equal(uart_rx_enable(uart_dev,
@@ -282,9 +279,12 @@ void test_double_buffer(void)
 		      "RX_DISABLED timeout");
 }
 
-void test_read_abort_callback(struct uart_event *evt, void *user_data)
+void test_read_abort_callback(const struct device *dev,
+			      struct uart_event *evt, void *user_data)
 {
 	int err;
+
+	ARG_UNUSED(dev);
 
 	switch (evt->type) {
 	case UART_TX_DONE:
@@ -315,8 +315,6 @@ void test_read_abort_callback(struct uart_event *evt, void *user_data)
 
 void test_read_abort_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	failed_in_isr = false;
 	uart_callback_set(uart_dev, test_read_abort_callback, NULL);
 
@@ -328,7 +326,7 @@ void test_read_abort_setup(void)
 
 void test_read_abort(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
+	const struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
 	int err;
 
 	uint8_t rx_buf[100];
@@ -370,8 +368,11 @@ void test_read_abort(void)
 	uart_rx_disable(uart_dev);
 }
 
-void test_write_abort_callback(struct uart_event *evt, void *user_data)
+void test_write_abort_callback(const struct device *dev,
+			       struct uart_event *evt, void *user_data)
 {
+	ARG_UNUSED(dev);
+
 	switch (evt->type) {
 	case UART_TX_DONE:
 		sent = evt->data.tx.len;
@@ -401,15 +402,11 @@ void test_write_abort_callback(struct uart_event *evt, void *user_data)
 
 void test_write_abort_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	uart_callback_set(uart_dev, test_write_abort_callback, NULL);
 }
 
 void test_write_abort(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	uint8_t rx_buf[100];
 	uint8_t tx_buf[100];
 
@@ -445,8 +442,11 @@ void test_write_abort(void)
 }
 
 
-void test_forever_timeout_callback(struct uart_event *evt, void *user_data)
+void test_forever_timeout_callback(const struct device *dev,
+				   struct uart_event *evt, void *user_data)
 {
+	ARG_UNUSED(dev);
+
 	switch (evt->type) {
 	case UART_TX_DONE:
 		k_sem_give(&tx_done);
@@ -472,15 +472,11 @@ void test_forever_timeout_callback(struct uart_event *evt, void *user_data)
 
 void test_forever_timeout_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	uart_callback_set(uart_dev, test_forever_timeout_callback, NULL);
 }
 
 void test_forever_timeout(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	uint8_t rx_buf[100];
 	uint8_t tx_buf[100];
 
@@ -519,10 +515,9 @@ ZTEST_DMEM uint8_t chained_write_tx_bufs[2][10] = {"Message 1", "Message 2"};
 ZTEST_DMEM bool chained_write_next_buf = true;
 ZTEST_BMEM volatile uint8_t tx_sent;
 
-void test_chained_write_callback(struct uart_event *evt, void *user_data)
+void test_chained_write_callback(const struct device *uart_dev,
+				 struct uart_event *evt, void *user_data)
 {
-	struct device *uart_dev = (struct device *) user_data;
-
 	switch (evt->type) {
 	case UART_TX_DONE:
 		if (chained_write_next_buf) {
@@ -553,7 +548,7 @@ void test_chained_write_callback(struct uart_event *evt, void *user_data)
 
 void test_chained_write_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
+	const struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
 
 	uart_callback_set(uart_dev, test_chained_write_callback, uart_dev);
 	received = 0;
@@ -561,8 +556,6 @@ void test_chained_write_setup(void)
 
 void test_chained_write(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	uint8_t rx_buf[20];
 
 	memset(rx_buf, 0, sizeof(rx_buf));
@@ -597,9 +590,9 @@ ZTEST_BMEM uint8_t long_tx_buf[1000];
 ZTEST_BMEM volatile uint8_t evt_num;
 ZTEST_BMEM size_t long_received[2];
 
-void test_long_buffers_callback(struct uart_event *evt, void *user_data)
+void test_long_buffers_callback(const struct device *uart_dev,
+				struct uart_event *evt, void *user_data)
 {
-	struct device *uart_dev = (struct device *) user_data;
 	static bool next_buf = true;
 
 	switch (evt->type) {
@@ -635,15 +628,11 @@ void test_long_buffers_callback(struct uart_event *evt, void *user_data)
 
 void test_long_buffers_setup(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
-	uart_callback_set(uart_dev, test_long_buffers_callback, uart_dev);
+	uart_callback_set(uart_dev, test_long_buffers_callback, NULL);
 }
 
 void test_long_buffers(void)
 {
-	struct device *uart_dev = device_get_binding(UART_DEVICE_NAME);
-
 	memset(long_rx_buf, 0, sizeof(long_rx_buf));
 	memset(long_tx_buf, 1, sizeof(long_tx_buf));
 

@@ -69,7 +69,7 @@ void lll_master_prepare(void *param)
 	int err;
 
 	err = lll_hfclock_on();
-	LL_ASSERT(!err || err == -EINPROGRESS);
+	LL_ASSERT(err >= 0);
 
 	/* Instants elapsed */
 	elapsed = p->lazy + 1;
@@ -99,6 +99,20 @@ static int prepare_cb(struct lll_prepare_param *prepare_param)
 	uint32_t remainder;
 
 	DEBUG_RADIO_START_M(1);
+
+	/* Check if stopped (on disconnection between prepare and pre-empt)
+	 */
+	if (unlikely(lll->handle == 0xFFFF)) {
+		int err;
+
+		err = lll_hfclock_off();
+		LL_ASSERT(err >= 0);
+
+		lll_done(NULL);
+
+		DEBUG_RADIO_START_M(0);
+		return 0;
+	}
 
 	/* Reset connection event global variables */
 	lll_conn_prepare_reset();

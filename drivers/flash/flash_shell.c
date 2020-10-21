@@ -8,6 +8,7 @@
 #include <zephyr.h>
 
 #include <shell/shell.h>
+#include <sys/util.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -17,13 +18,11 @@
 #define BUF_ARRAY_CNT 16
 #define TEST_ARR_SIZE 0x1000
 
-extern struct device __device_start[];
-extern struct device __device_end[];
-
 static uint8_t __aligned(4) test_arr[TEST_ARR_SIZE];
 
 static int parse_helper(const struct shell *shell, size_t *argc,
-		char **argv[], struct device **flash_dev, uint32_t *addr)
+		char **argv[], const struct device * *flash_dev,
+		uint32_t *addr)
 {
 	char *endptr;
 
@@ -49,7 +48,7 @@ static int parse_helper(const struct shell *shell, size_t *argc,
 
 static int cmd_erase(const struct shell *shell, size_t argc, char *argv[])
 {
-	struct device *flash_dev;
+	const struct device *flash_dev;
 	uint32_t page_addr;
 	int result;
 	uint32_t size;
@@ -92,7 +91,7 @@ static int cmd_write(const struct shell *shell, size_t argc, char *argv[])
 {
 	uint32_t check_array[BUF_ARRAY_CNT];
 	uint32_t buf_array[BUF_ARRAY_CNT];
-	struct device *flash_dev;
+	const struct device *flash_dev;
 	uint32_t w_addr;
 	int ret;
 	int j = 0;
@@ -137,8 +136,10 @@ static int cmd_write(const struct shell *shell, size_t argc, char *argv[])
 
 static int cmd_read(const struct shell *shell, size_t argc, char *argv[])
 {
-	struct device *flash_dev;
+	const struct device *flash_dev;
 	uint32_t addr;
+	int todo;
+	int upto;
 	int cnt;
 	int ret;
 
@@ -153,16 +154,17 @@ static int cmd_read(const struct shell *shell, size_t argc, char *argv[])
 		cnt = 1;
 	}
 
-	while (cnt--) {
-		uint32_t data;
+	for (upto = 0; upto < cnt; upto += todo) {
+		uint8_t data[SHELL_HEXDUMP_BYTES_IN_LINE];
 
-		ret = flash_read(flash_dev, addr, &data, sizeof(data));
+		todo = MIN(cnt - upto, SHELL_HEXDUMP_BYTES_IN_LINE);
+		ret = flash_read(flash_dev, addr, data, todo);
 		if (ret != 0) {
 			shell_error(shell, "Read ERROR!");
 			return -EIO;
 		}
-		shell_print(shell, "0x%08x ", data);
-		addr += sizeof(data);
+		shell_hexdump_line(shell, addr, data, todo);
+		addr += todo;
 	}
 
 	shell_print(shell, "");
@@ -172,7 +174,7 @@ static int cmd_read(const struct shell *shell, size_t argc, char *argv[])
 
 static int cmd_test(const struct shell *shell, size_t argc, char *argv[])
 {
-	struct device *flash_dev;
+	const struct device *flash_dev;
 	uint32_t repeat;
 	int result;
 	uint32_t addr;
@@ -225,7 +227,7 @@ SHELL_DYNAMIC_CMD_CREATE(dsub_device_name, device_name_get);
 
 static void device_name_get(size_t idx, struct shell_static_entry *entry)
 {
-	struct device *dev = shell_device_lookup(idx, NULL);
+	const struct device *dev = shell_device_lookup(idx, NULL);
 
 	entry->syntax = (dev != NULL) ? dev->name : NULL;
 	entry->handler = NULL;
