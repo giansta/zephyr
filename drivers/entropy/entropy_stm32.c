@@ -99,11 +99,15 @@ static int entropy_stm32_got_error(RNG_TypeDef *rng)
 {
 	__ASSERT_NO_MSG(rng != NULL);
 
-	if (LL_RNG_IsActiveFlag_CECS(rng)) {
+	if (LL_RNG_IsActiveFlag_CEIS(rng)) {
+		LL_RNG_ClearFlag_CEIS(rng);
 		return 1;
 	}
 
-	if (LL_RNG_IsActiveFlag_SECS(rng)) {
+	if (LL_RNG_IsActiveFlag_SEIS(rng)) {
+		LL_RNG_ClearFlag_SEIS(rng);
+		LL_RNG_Disable(rng);
+		LL_RNG_Enable(rng);
 		return 1;
 	}
 
@@ -117,10 +121,10 @@ static int random_byte_get(void)
 
 	key = irq_lock();
 
-	if ((LL_RNG_IsActiveFlag_DRDY(entropy_stm32_rng_data.rng) == 1)) {
-		if (entropy_stm32_got_error(entropy_stm32_rng_data.rng)) {
-			retval = -EIO;
-		} else {
+	if (entropy_stm32_got_error(entropy_stm32_rng_data.rng)) {
+		retval = -EIO;
+	} else {
+		if ((LL_RNG_IsActiveFlag_DRDY(entropy_stm32_rng_data.rng) == 1)) {
 			retval = LL_RNG_ReadRandData32(
 						    entropy_stm32_rng_data.rng);
 		}
@@ -358,18 +362,9 @@ static int entropy_stm32_rng_init(const struct device *dev)
 
 #if CONFIG_SOC_SERIES_STM32L4X
 
-#if !defined(CONFIG_CLOCK_STM32_PLL_SRC_MSI) && \
-	!defined(CONFIG_CLOCK_STM32_PLL_SRC_HSI) && \
-	!defined(CONFIG_CLOCK_STM32_PLL_SRC_HSE)
-
-	/* If no PLLSRC clock, use other available 48 MHz clock source */
-#if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_HSI)
-	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_HSI48);
-#elif defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI)
+#if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI)
+	/* If available, use MSI clock source */
 	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_MSI);
-#else
-#error "No source clock available for RNG"
-#endif /* defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_HSI) */
 
 #else
 	/* Configure PLLSA11 to enable 48M domain */
