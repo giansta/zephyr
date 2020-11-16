@@ -9,6 +9,10 @@
 
 #define DT_DRV_COMPAT st_stm32_rng
 
+//#define NX_RNG_CLK_MSI
+//#define NX_RNG_CLK_MSI_PLLSAI1
+#define NX_RNG_CLK_HSI48
+
 #include <kernel.h>
 #include <device.h>
 #include <drivers/entropy.h>
@@ -94,6 +98,9 @@ static const struct entropy_stm32_rng_dev_cfg entropy_stm32_rng_config = {
 static struct entropy_stm32_rng_dev_data entropy_stm32_rng_data = {
 	.rng = (RNG_TypeDef *)DT_INST_REG_ADDR(0),
 };
+
+static void entropy_setup_clock(void);
+static void entropy_unsetup_clock(void);
 
 static int entropy_stm32_got_error(RNG_TypeDef *rng)
 {
@@ -189,6 +196,8 @@ static uint16_t rng_pool_get(struct rng_pool *rngp, uint8_t *buf, uint16_t len)
 	len = dst - buf;
 	available = available - len;
 	if (available <= rngp->threshold) {
+		entropy_setup_clock();
+		LL_RNG_Enable(entropy_stm32_rng_data.rng);
 		LL_RNG_EnableIT(entropy_stm32_rng_data.rng);
 	}
 
@@ -242,6 +251,8 @@ static void stm32_rng_isr(const void *arg)
 				byte);
 		if (ret < 0) {
 			LL_RNG_DisableIT(entropy_stm32_rng_data.rng);
+			LL_RNG_Disable(entropy_stm32_rng_data.rng);
+			entropy_unsetup_clock();
 		}
 
 		k_sem_give(&entropy_stm32_rng_data.sem_sync);
@@ -346,31 +357,17 @@ static int entropy_stm32_rng_get_entropy_isr(const struct device *dev,
 	return cnt;
 }
 
-static int entropy_stm32_rng_init(const struct device *dev)
+static void entropy_setup_clock(void)
 {
-	struct entropy_stm32_rng_dev_data *dev_data;
-	const struct entropy_stm32_rng_dev_cfg *dev_cfg;
-	int res;
+#if defined(NX_RNG_CLK_MSI)
 
-	__ASSERT_NO_MSG(dev != NULL);
-
-	dev_data = DEV_DATA(dev);
-	dev_cfg = DEV_CFG(dev);
-
-	__ASSERT_NO_MSG(dev_data != NULL);
-	__ASSERT_NO_MSG(dev_cfg != NULL);
-
-#if CONFIG_SOC_SERIES_STM32L4X
-
-#if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI)
-	/* If available, use MSI clock source */
 	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_MSI);
 
-#else
+#elif defined(NX_RNG_CLK_MSI_PLLSAI1)
 	/* Configure PLLSA11 to enable 48M domain */
 	LL_RCC_PLLSAI1_ConfigDomain_48M(LL_RCC_PLLSOURCE_MSI,
-					LL_RCC_PLLM_DIV_1,
-					24, LL_RCC_PLLSAI1Q_DIV_2);
+	                                LL_RCC_PLLM_DIV_8,
+	                                16, LL_RCC_PLLSAI1Q_DIV_2);
 
 	/* Enable PLLSA1 */
 	LL_RCC_PLLSAI1_Enable();
@@ -387,7 +384,59 @@ static int entropy_stm32_rng_init(const struct device *dev)
 	 *  Linear Feedback Shift Register
 	 */
 	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_PLLSAI1);
-#endif /* !CONFIG_CLOCK_STM32_PLL_SRC_MSI) && !_HSI && _HSE */
+
+#elif defined(NX_RNG_CLK_HSI48)
+
+	/* Use the HSI48 for the RNG */
+	LL_RCC_HSI48_Enable();
+	while (!LL_RCC_HSI48_IsReady()) {
+		/* Wait for HSI48 to become ready */
+	}
+
+	LL_RCC_SetRNGClockSource(LL_RCC_RNG_CLKSOURCE_HSI48);
+
+#endif
+}
+
+static void entropy_unsetup_clock(void)
+{
+	LL_RCC_SetRNGClockSource(0);
+
+	#if defined(NX_RNG_CLK_MSI)
+
+	#elif defined(NX_RNG_CLK_MSI_PLLSAI1)
+
+	/* Enable PLLSA1 */
+	LL_RCC_PLLSAI1_Disable();
+
+	/* Configure PLLSA11 to enable 48M domain */
+	LL_RCC_PLLSAI1_ConfigDomain_48M(LL_RCC_PLLSOURCE_NONE,
+	                                LL_RCC_PLLM_DIV_8,
+	                                16, LL_RCC_PLLSAI1Q_DIV_2);
+
+	#elif defined(NX_RNG_CLK_HSI48)
+
+	LL_RCC_HSI48_Disable();
+
+	#endif
+}
+
+static int entropy_stm32_rng_init(const struct device *dev)
+{
+	struct entropy_stm32_rng_dev_data *dev_data;
+	const struct entropy_stm32_rng_dev_cfg *dev_cfg;
+	int res;
+
+	__ASSERT_NO_MSG(dev != NULL);
+
+	dev_data = DEV_DATA(dev);
+	dev_cfg = DEV_CFG(dev);
+
+	__ASSERT_NO_MSG(dev_data != NULL);
+	__ASSERT_NO_MSG(dev_cfg != NULL);
+
+#if CONFIG_SOC_SERIES_STM32L4X
+	entropy_setup_clock();
 
 #elif defined(RCC_CR2_HSI48ON) || defined(RCC_CR_HSI48ON) \
 	|| defined(RCC_CRRCR_HSI48ON)
