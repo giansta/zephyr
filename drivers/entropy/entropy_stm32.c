@@ -134,6 +134,7 @@ static int random_byte_get(void)
 		if ((LL_RNG_IsActiveFlag_DRDY(entropy_stm32_rng_data.rng) == 1)) {
 			retval = LL_RNG_ReadRandData32(
 						    entropy_stm32_rng_data.rng);
+			retval &= 0xFF;
 		}
 	}
 
