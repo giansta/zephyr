@@ -45,8 +45,6 @@ LOG_MODULE_REGISTER(uart_stm32, CONFIG_SERIAL_LOG_LEVEL);
 #define UART_STRUCT(dev)					\
 	((USART_TypeDef *)(DEV_CFG(dev))->uconf.base)
 
-#define TIMEOUT 1000
-
 static inline void uart_stm32_set_baudrate(const struct device *dev,
 					   uint32_t baud_rate)
 {
@@ -696,8 +694,8 @@ static void async_evt_rx_err(struct uart_stm32_data *data, int err_code)
 	struct uart_event event = {
 		.type = UART_RX_STOPPED,
 		.data.rx_stop.reason = err_code,
-		.data.rx_stop.data.len = data->rx.counter,
-		.data.rx_stop.data.offset = 0,
+		.data.rx_stop.data.len = data->rx.counter - data->rx.offset,
+		.data.rx_stop.data.offset = data->rx.offset,
 		.data.rx_stop.data.buf = data->rx.buffer
 	};
 
@@ -757,6 +755,19 @@ static void async_evt_rx_buf_release(struct uart_stm32_data *data)
 	async_user_callback(data, &evt);
 }
 
+static void async_evt_rx_next_buf_release(struct uart_stm32_data *data)
+{
+	struct uart_event evt = {
+		.type = UART_RX_BUF_RELEASED,
+		.data.rx_buf.buf = data->rx_next_buffer,
+	};
+
+	if (data->rx_next_buffer != NULL)
+	{
+		async_user_callback(data, &evt);
+	}
+}
+
 static int uart_stm32_dma_tx_enable(const struct device *dev, bool enable)
 {
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
@@ -811,6 +822,7 @@ static int uart_stm32_async_rx_disable(const struct device *dev)
 	}
 
 	async_evt_rx_buf_release(data);
+	async_evt_rx_next_buf_release(data);
 
 	uart_stm32_dma_rx_enable(dev, false);
 
@@ -1096,6 +1108,13 @@ static int uart_stm32_async_tx_abort(const struct device *dev)
 	}
 
 	dma_stop(data->dev_dma_tx, data->tx.dma_channel);
+
+	/* Ensure that DMA is re-configured (instead of reloaded) in case
+	 * of TX abort (otherwise, subsequent transmissions are reported as
+	 * TX_ABORTED even if they are successful).
+	 */
+	data->tx.blk_cfg.source_address = 0; /* not ready */
+
 	async_evt_tx_abort(data);
 
 	return 0;
