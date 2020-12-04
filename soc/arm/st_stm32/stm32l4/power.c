@@ -30,7 +30,11 @@ void sys_set_power_state(enum power_states state)
 		LL_DBGMCU_EnableDBGStopMode();
 #endif /* CONFIG_DEBUG */
 		/* ensure HSI is the wake-up system clock */
+#if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI)
+		LL_RCC_SetClkAfterWakeFromStop(LL_RCC_STOP_WAKEUPCLOCK_MSI);
+#else
 		LL_RCC_SetClkAfterWakeFromStop(LL_RCC_STOP_WAKEUPCLOCK_HSI);
+#endif
 		/* enter STOP0 mode */
 		LL_PWR_SetPowerMode(LL_PWR_MODE_STOP0);
 		LL_LPM_EnableDeepSleep();
@@ -46,7 +50,11 @@ void sys_set_power_state(enum power_states state)
 		LL_DBGMCU_EnableDBGStopMode();
 #endif /* CONFIG_DEBUG */
 		/* ensure HSI is the wake-up system clock */
+#if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI)
+		LL_RCC_SetClkAfterWakeFromStop(LL_RCC_STOP_WAKEUPCLOCK_MSI);
+#else
 		LL_RCC_SetClkAfterWakeFromStop(LL_RCC_STOP_WAKEUPCLOCK_HSI);
+#endif
 		/* enter STOP1 mode */
 		LL_PWR_SetPowerMode(LL_PWR_MODE_STOP1);
 		LL_LPM_EnableDeepSleep();
@@ -61,7 +69,11 @@ void sys_set_power_state(enum power_states state)
 		LL_DBGMCU_EnableDBGStopMode();
 #endif /* CONFIG_DEBUG */
 		/* ensure HSI is the wake-up system clock */
+#if defined(CONFIG_CLOCK_STM32_SYSCLK_SRC_MSI)
+		LL_RCC_SetClkAfterWakeFromStop(LL_RCC_STOP_WAKEUPCLOCK_MSI);
+#else
 		LL_RCC_SetClkAfterWakeFromStop(LL_RCC_STOP_WAKEUPCLOCK_HSI);
+#endif
 #ifdef PWR_CR1_RRSTP
 		LL_PWR_DisableSRAM3Retention();
 #endif /* PWR_CR1_RRSTP */
