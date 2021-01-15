@@ -624,7 +624,7 @@ static void uart_stm32_irq_callback_set(const struct device *dev,
 #if defined(CONFIG_UART_INTERRUPT_DRIVEN) || defined(CONFIG_UART_ASYNC_API)
 
 #ifdef CONFIG_UART_ASYNC_API
-static void uart_stm32_dma_rx_cb(const struct device *dev, const void *user_data,
+static void uart_stm32_dma_rx_cb(const struct device *dma_dev, const void *user_data,
 				 uint32_t id, int ret_code);
 #endif
 
@@ -638,7 +638,7 @@ static void uart_stm32_isr(const struct device *dev)
 			&& LL_USART_IsActiveFlag_IDLE(UartInstance)) {
 		LL_USART_ClearFlag_IDLE(UartInstance);
 		LOG_DBG("idle");
-		uart_stm32_dma_rx_cb(dev, NULL, data->rx.dma_channel, 0);
+		uart_stm32_dma_rx_cb(data->dev_dma_rx, dev, data->rx.dma_channel, 0);
 	}
 #endif
 
@@ -842,6 +842,8 @@ static void uart_stm32_dma_tx_cb(const struct device *dma_dev,
 				 const void *user_data,
 				 uint32_t id, int ret_code)
 {
+	__ASSERT_NO_MSG(user_data != NULL);
+
 	const struct device *dev = user_data;
 	struct uart_stm32_data *data = DEV_DATA(dev);
 	struct dma_status stat;
@@ -906,9 +908,12 @@ static inline void async_timer_start(struct k_delayed_work *work,
 	}
 }
 
-static void uart_stm32_dma_rx_cb(const struct device *dev, const void *user_data,
+static void uart_stm32_dma_rx_cb(const struct device *dma_dev, const void *user_data,
 				 uint32_t id, int ret_code)
 {
+	__ASSERT_NO_MSG(user_data != NULL);
+
+	const struct device *dev = user_data;
 	struct uart_stm32_data *data = DEV_DATA(dev);
 	int rx_rcv_len = 0;
 	struct dma_status stat;
