@@ -640,6 +640,9 @@ static void uart_stm32_isr(const struct device *dev)
 		LOG_DBG("idle");
 		uart_stm32_dma_rx_cb(data->dev_dma_rx, dev, data->rx.dma_channel, 0);
 	}
+
+	/* Clear errors */
+	uart_stm32_err_check(dev);
 #endif
 
 #ifdef CONFIG_UART_INTERRUPT_DRIVEN
