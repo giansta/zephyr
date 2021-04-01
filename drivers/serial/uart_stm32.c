@@ -865,9 +865,8 @@ static void uart_stm32_dma_tx_cb(const struct device *dma_dev,
 
 static void uart_stm32_dma_replace_buffer(const struct device *dev)
 {
-
 	struct uart_stm32_data *data = DEV_DATA(dev);
-	/* Replace the buffer and relod the DMA */
+	/* Replace the buffer and reload the DMA */
 
 	/* Disable UART RX DMA */
 	uart_stm32_dma_rx_enable(dev, false);
@@ -895,7 +894,6 @@ static void uart_stm32_dma_replace_buffer(const struct device *dev)
 
 	/* Enable RX DMA requests again */
 	uart_stm32_dma_rx_enable(dev, true);
-
 }
 
 static inline void async_timer_start(struct k_delayed_work *work,
@@ -976,7 +974,6 @@ static int uart_stm32_async_tx(const struct device *dev, const uint8_t *tx_data,
 {
 	struct uart_stm32_data *data = DEV_DATA(dev);
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
-	bool reload;
 	int ret;
 
 	if (data->dev_dma_tx == NULL) {
@@ -996,24 +993,13 @@ static int uart_stm32_async_tx(const struct device *dev, const uint8_t *tx_data,
 	/* disable TX interrupt since DMA will handle it */
 	LL_USART_DisableIT_TC(UartInstance);
 
-	reload = data->tx.blk_cfg.source_address != 0 ? true : false;
-
 	/* set source address */
 	data->tx.blk_cfg.source_address = (uint32_t)data->tx.buffer;
 	data->tx.blk_cfg.block_size = data->tx.buffer_length;
 
-	if (reload) {
-		ret = dma_reload(data->dev_dma_tx, data->tx.dma_channel,
-				 data->tx.blk_cfg.source_address,
-				 data->tx.blk_cfg.dest_address,
-				 data->tx.blk_cfg.block_size);
-	} else {
-		ret = dma_config(data->dev_dma_tx, data->tx.dma_channel,
-				 &data->tx.dma_cfg);
-	}
-
+	ret = dma_config(data->dev_dma_tx, data->tx.dma_channel, &data->tx.dma_cfg);
 	if (ret != 0) {
-		LOG_ERR("dma config/reload error!");
+		LOG_ERR("dma config error!");
 		return -EINVAL;
 	}
 
@@ -1034,7 +1020,6 @@ static int uart_stm32_async_rx_enable(const struct device *dev, uint8_t *rx_buf,
 {
 	struct uart_stm32_data *data = DEV_DATA(dev);
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
-	bool reload;
 	int ret;
 
 	if (data->dev_dma_rx == NULL) {
@@ -1055,21 +1040,10 @@ static int uart_stm32_async_rx_enable(const struct device *dev, uint8_t *rx_buf,
 	/* Disable RX interrupts to let DMA to handle it */
 	LL_USART_DisableIT_RXNE(UartInstance);
 
-	reload = data->rx.blk_cfg.dest_address != 0 ? true : false;
-
 	data->rx.blk_cfg.block_size = buf_size;
 	data->rx.blk_cfg.dest_address = (uint32_t)data->rx.buffer;
 
-	if (reload) {
-		ret = dma_reload(data->dev_dma_rx, data->rx.dma_channel,
-				  data->rx.blk_cfg.source_address,
-				  data->rx.blk_cfg.dest_address,
-				  data->rx.blk_cfg.block_size);
-	} else {
-		ret = dma_config(data->dev_dma_rx, data->rx.dma_channel,
-				 &data->rx.dma_cfg);
-	}
-
+	ret = dma_config(data->dev_dma_rx, data->rx.dma_channel, &data->rx.dma_cfg);
 	if (ret != 0) {
 		LOG_ERR("UART ERR: RX DMA config/reload failed!");
 		return -EINVAL;
@@ -1113,13 +1087,6 @@ static int uart_stm32_async_tx_abort(const struct device *dev)
 	}
 
 	dma_stop(data->dev_dma_tx, data->tx.dma_channel);
-
-	/* Ensure that DMA is re-configured (instead of reloaded) in case
-	 * of TX abort (otherwise, subsequent transmissions are reported as
-	 * TX_ABORTED even if they are successful).
-	 */
-	data->tx.blk_cfg.source_address = 0; /* not ready */
-
 	async_evt_tx_abort(data);
 
 	return 0;
@@ -1162,7 +1129,7 @@ static int uart_stm32_async_rx_buf_rsp(const struct device *dev, uint8_t *buf,
 	return 0;
 }
 
-static int uart_stm32_async_init(const struct device *dev)
+int uart_stm32_async_init(const struct device *dev)
 {
 	struct uart_stm32_data *data = DEV_DATA(dev);
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
@@ -1278,7 +1245,7 @@ static const struct uart_driver_api uart_stm32_driver_api = {
  *
  * @return 0
  */
-static int uart_stm32_init(const struct device *dev)
+int uart_stm32_init(const struct device *dev)
 {
 	const struct uart_stm32_config *config = DEV_CFG(dev);
 	struct uart_stm32_data *data = DEV_DATA(dev);
