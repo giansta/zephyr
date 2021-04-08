@@ -1132,7 +1132,7 @@ static int uart_stm32_async_rx_buf_rsp(const struct device *dev, uint8_t *buf,
 	return 0;
 }
 
-int uart_stm32_async_init(const struct device *dev)
+static int uart_stm32_async_init(const struct device *dev)
 {
 	struct uart_stm32_data *data = DEV_DATA(dev);
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
@@ -1248,7 +1248,7 @@ static const struct uart_driver_api uart_stm32_driver_api = {
  *
  * @return 0
  */
-int uart_stm32_init(const struct device *dev)
+static int uart_stm32_init(const struct device *dev)
 {
 	const struct uart_stm32_config *config = DEV_CFG(dev);
 	struct uart_stm32_data *data = DEV_DATA(dev);
