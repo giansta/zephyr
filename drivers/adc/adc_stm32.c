@@ -416,7 +416,7 @@ static int adc_stm32_read(const struct device *dev,
 	return error;
 }
 #else
-static int adc_stm32_wait_stabilisation(ADC_TypeDef *adc)
+static int adc_stm32_enable_and_wait_stabilisation(ADC_TypeDef *adc)
 {
 #if defined(CONFIG_SOC_SERIES_STM32L4X) || \
 	defined(CONFIG_SOC_SERIES_STM32WBX) || \
@@ -429,14 +429,19 @@ static int adc_stm32_wait_stabilisation(ADC_TypeDef *adc)
 	 */
 	uint32_t countTimeout = 0;
 
-	while (LL_ADC_IsActiveFlag_ADRDY(adc) == 0) {
+	do {
 		if (LL_ADC_IsEnabled(adc) == 0UL) {
 			LL_ADC_Enable(adc);
-			countTimeout++;
-			if (countTimeout == 10) {
-				return -ETIMEDOUT;
-			}
 		}
+		countTimeout++;
+		if (countTimeout == 10) {
+			return -ETIMEDOUT;
+		}
+	} while (LL_ADC_IsActiveFlag_ADRDY(adc) == 0);
+	LL_ADC_ClearFlag_ADRDY(adc);
+#else
+	if (LL_ADC_IsEnabled(adc) == 0UL) {
+		LL_ADC_Enable(adc);
 	}
 #endif
 	return 0;
@@ -450,8 +455,7 @@ static int adc_stm32_read(const struct device *dev,
 	int error = 0;
 
 	if (LL_ADC_IsEnabled(adc) == 0) {
-		LL_ADC_Enable(adc);
-		error = adc_stm32_wait_stabilisation(adc);
+		error = adc_stm32_enable_and_wait_stabilisation(adc);
 	}
 
 	if (error == 0) {
@@ -718,10 +722,8 @@ static int adc_stm32_init(const struct device *dev)
 	}
 #endif
 
-	LL_ADC_Enable(adc);
-	error = adc_stm32_wait_stabilisation(adc);
-	if (error < 0)
-	{
+	error = adc_stm32_enable_and_wait_stabilisation(adc);
+	if (error < 0) {
 		return error;
 	}
 
